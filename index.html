@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Night Shift: Sector 4</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Night Shift: Sector 4 (Mobile)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         :root {
@@ -23,6 +23,10 @@
             font-family: 'Courier New', Courier, monospace;
             color: var(--crt-color);
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none; /* Prevents scrolling on mobile */
             text-shadow: 0 0 2px var(--crt-dim);
         }
 
@@ -30,6 +34,7 @@
         canvas {
             filter: contrast(1.2) brightness(1.1) sepia(0.2) saturate(0.8) blur(0.5px);
             z-index: 0;
+            display: block;
         }
 
         /* CAMERA OVERLAYS (Offline / EAS) */
@@ -70,6 +75,7 @@
             border: 20px solid #000;
             box-sizing: border-box;
             text-shadow: none;
+            overflow-y: auto; /* Allow scrolling text if screen small */
         }
 
         .eas-header {
@@ -110,6 +116,8 @@
             justify-content: center;
             z-index: 50;
             pointer-events: auto;
+            padding: 0 20px;
+            box-sizing: border-box;
         }
 
         .rw-btn {
@@ -125,9 +133,11 @@
             margin-top: 10px;
             box-shadow: 0 0 15px rgba(255,255,255,0.3);
             transition: all 0.2s;
+            max-width: 100%;
+            white-space: nowrap;
         }
 
-        .rw-btn:hover {
+        .rw-btn:active, .rw-btn:hover {
             background: #fff;
             color: #000;
             box-shadow: 0 0 25px rgba(255,255,255,0.8);
@@ -138,6 +148,7 @@
         
         #reboot-container {
             width: 500px;
+            max-width: 90vw; /* Mobile fix */
             border: 4px solid white;
             padding: 4px;
             background: #000;
@@ -252,10 +263,8 @@
             display: flex;
             justify-content: space-between;
             padding: 20px;
-            background: transparent; /* TRANSPARENT */
-            border: none; /* NO BORDER */
-            box-shadow: none; /* NO SHADOW */
-            pointer-events: none; /* Allow clicks through empty space */
+            background: transparent; 
+            pointer-events: none;
         }
 
         .bottom-bar {
@@ -263,10 +272,8 @@
             justify-content: space-between;
             align-items: flex-end;
             padding: 20px;
-            background: transparent; /* TRANSPARENT */
-            border: none; /* NO BORDER */
-            box-shadow: none; /* NO SHADOW */
-            pointer-events: none; /* Allow clicks through empty space */
+            background: transparent;
+            pointer-events: none;
         }
 
         /* Make children clickable again */
@@ -297,9 +304,10 @@
             font-size: 0.9rem;
             position: relative;
             overflow: hidden;
+            white-space: nowrap;
         }
 
-        .camera-btn:hover {
+        .camera-btn:hover, .camera-btn:active {
             background: var(--crt-color);
             color: #000;
             box-shadow: 0 0 15px var(--crt-color);
@@ -328,7 +336,7 @@
             text-transform: uppercase;
         }
 
-        #report-btn:hover {
+        #report-btn:active, #report-btn:hover {
             background: var(--danger);
             color: #000;
             transform: scale(1.05);
@@ -374,29 +382,30 @@
             transform: translate(-50%, -50%);
             background: rgba(0, 15, 0, 0.98);
             border: 2px solid var(--crt-color);
-            padding: 15px; /* Reduced Padding */
-            width: 260px; /* Reduced Width */
+            padding: 15px; 
+            width: 260px; 
             pointer-events: auto;
             box-shadow: 0 0 40px rgba(51, 255, 51, 0.2);
-            z-index: 50; /* FIXED: High z-index to appear above UI */
+            z-index: 50; 
+            max-width: 90%;
         }
 
         #report-modal h2 {
             margin-top: 0;
             border-bottom: 2px dashed var(--crt-color);
-            padding-bottom: 8px; /* Reduced */
-            margin-bottom: 8px; /* Reduced */
+            padding-bottom: 8px; 
+            margin-bottom: 8px; 
             text-align: center;
             letter-spacing: 2px;
             color: var(--crt-color);
             text-shadow: 0 0 5px var(--crt-color);
-            font-size: 1.2rem; /* Reduced */
+            font-size: 1.2rem; 
         }
 
         #modal-content {
             display: flex;
             flex-direction: column;
-            gap: 5px; /* Reduced gap */
+            gap: 5px; 
         }
 
         .report-option {
@@ -405,15 +414,15 @@
             background: #000;
             border: 1px solid var(--crt-dim);
             color: var(--crt-color);
-            padding: 6px 10px; /* Reduced Padding */
+            padding: 12px 10px; /* Larger tap area */
             text-align: left;
             cursor: pointer;
             font-family: inherit;
-            font-size: 0.85rem; /* Reduced Font */
+            font-size: 0.95rem; 
             transition: all 0.1s;
         }
 
-        .report-option:hover {
+        .report-option:active, .report-option:hover {
             background: var(--crt-color);
             color: #000;
             box-shadow: 0 0 10px var(--crt-color);
@@ -442,11 +451,11 @@
             background: #111;
             color: #666;
             border: 1px solid #333;
-            padding: 6px;
+            padding: 10px;
             cursor: pointer;
             font-family: inherit;
             text-transform: uppercase;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
         }
         
         #close-report:hover {
@@ -461,6 +470,7 @@
             top: 80px;
             right: 30px;
             width: 320px;
+            max-width: 80%;
             background: rgba(0, 5, 0, 0.95);
             border: 2px solid var(--crt-color);
             color: var(--crt-color);
@@ -482,6 +492,7 @@
             margin-bottom: 10px;
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
         }
 
         .admin-row select, .admin-row button {
@@ -534,7 +545,7 @@
         /* FEEDBACK MESSAGES */
         #feedback {
             position: absolute;
-            top: 20%; /* MOVED TO TOP */
+            top: 20%; 
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 2.5rem;
@@ -550,6 +561,8 @@
             z-index: 60;
             box-shadow: 0 0 30px rgba(0,0,0,0.8);
             text-shadow: 2px 2px 0 #000;
+            width: 80%;
+            box-sizing: border-box;
         }
 
         /* GAME OVER SCREEN */
@@ -566,6 +579,9 @@
             justify-content: center;
             align-items: center;
             color: var(--danger);
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
         }
 
         #start-screen {
@@ -581,6 +597,9 @@
             justify-content: center;
             align-items: center;
             color: var(--crt-color);
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
         }
         
         #start-screen h1 {
@@ -603,6 +622,89 @@
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 51, 51, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0); } }
 
         .hidden { display: none !important; }
+
+        /* --- MOBILE SPECIFIC STYLES --- */
+        @media (max-width: 768px) {
+            #start-screen h1 {
+                font-size: 2.5rem;
+                letter-spacing: 2px;
+            }
+            #start-btn {
+                font-size: 1.5rem;
+                padding: 15px 40px;
+            }
+            .eas-header {
+                font-size: 1.5rem;
+                padding: 10px;
+            }
+            .eas-body {
+                font-size: 1.1rem;
+            }
+            #eas-overlay {
+                padding: 10px;
+                border-width: 5px;
+            }
+            
+            /* Responsive UI Layout */
+            .top-bar {
+                padding: 10px;
+                font-size: 0.8rem;
+                align-items: flex-start;
+            }
+            .status-panel {
+                font-size: 0.9rem;
+            }
+
+            .bottom-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 15px;
+                padding: 10px 10px 20px 10px;
+                background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+            }
+
+            #camera-controls {
+                display: flex;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                max-width: 100%;
+                gap: 10px;
+                padding-bottom: 5px;
+                /* Hide scrollbar */
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+                justify-content: flex-start;
+                mask-image: linear-gradient(to right, black 85%, transparent 100%);
+                -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+            }
+            
+            #camera-controls::-webkit-scrollbar {
+                display: none;
+            }
+
+            .camera-btn {
+                flex: 0 0 auto;
+                padding: 12px 18px;
+                font-size: 0.9rem;
+            }
+
+            #report-btn {
+                width: 100%;
+                font-size: 1.1rem;
+                padding: 15px;
+                margin-bottom: 0;
+            }
+
+            #feedback {
+                font-size: 1.5rem;
+                padding: 15px;
+                width: 90%;
+            }
+            
+            #offline-overlay {
+                font-size: 2rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -707,15 +809,15 @@
         <p>Your job is to monitor the facility feeds.</p>
         <p>If you see something change, REPORT it immediately.</p>
         <p>If too many anomalies accumulate, you will be terminated.</p>
-        <p style="margin-top: 10px; font-size: 0.8rem; color: #888;">(HOLD LEFT CLICK OR TOUCH SCREEN FOR FLASHLIGHT)</p>
+        <p style="margin-top: 10px; font-size: 0.8rem; color: #888;">(TOUCH AND DRAG TO USE FLASHLIGHT/PAN)</p>
         <br>
         <button class="camera-btn" id="start-btn">START SHIFT</button>
     </div>
 
     <div id="game-over">
-        <h1 style="font-size: 4rem;">SIGNAL LOST</h1>
+        <h1 style="font-size: 3rem;">SIGNAL LOST</h1>
         <p id="game-over-reason">TOO MANY ANOMALIES DETECTED</p>
-        <button class="camera-btn" onclick="location.reload()">RETRY</button>
+        <button class="camera-btn" onclick="location.reload()" style="margin-top: 20px;">RETRY</button>
     </div>
 
     <script>
@@ -767,12 +869,12 @@
         const mouse = new THREE.Vector2();
         const raycaster = new THREE.Raycaster();
 
-        function updatePointer(x, y, isTouch) {
-            // Offset Y slightly up (negative pixel Y) so finger doesn't hide center
-            const yOffset = isTouch ? -120 : 0; 
-            
+        // Updated function to handle coordinates relative to window center (-1 to 1)
+        function updatePointer(x, y) {
+            // Normalize to -1 to 1 range
             mouse.x = (x / window.innerWidth) * 2 - 1;
-            mouse.y = -((y + yOffset) / window.innerHeight) * 2 + 1;
+            // Invert Y because screen Y goes down, 3D Y goes up
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
 
             // Project ray for flashlight target
             raycaster.setFromCamera(mouse, camera);
@@ -780,9 +882,10 @@
             flashlight.target.position.copy(targetPos);
         }
 
+        // MOUSE EVENTS
         window.addEventListener('mousemove', (event) => {
             if (!gameState.active) return;
-            updatePointer(event.clientX, event.clientY, false);
+            updatePointer(event.clientX, event.clientY);
         });
 
         window.addEventListener('mousedown', (e) => {
@@ -798,37 +901,42 @@
             flashlight.intensity = 0; // Turn off
         });
 
-        // TOUCH EVENTS
+        // TOUCH EVENTS (Enhanced for Mobile)
         window.addEventListener('touchstart', (e) => {
-            // Check UI interactions
             if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
             if (e.target.closest('#report-modal') || e.target.closest('#admin-panel')) return;
             if (document.getElementById('report-modal').style.display === 'block') return;
             if (!gameState.active) return;
 
-            e.preventDefault(); // Prevent mouse emulation
+            // Don't preventDefault here globally or buttons wont click
+            // But if touching canvas...
+            if(e.target === renderer.domElement) {
+                // e.preventDefault(); // Sometimes prevents click?
+            }
+
             const touch = e.touches[0];
-            updatePointer(touch.clientX, touch.clientY, true);
+            updatePointer(touch.clientX, touch.clientY);
             flashlight.intensity = 1.2;
         }, { passive: false });
 
         window.addEventListener('touchmove', (e) => {
             if (!gameState.active) return;
             // Allow scrolling in admin/modal lists, block elsewhere
-            if (!e.target.closest('#admin-active-list') && !e.target.closest('#modal-content')) {
-                 e.preventDefault();
+            if (!e.target.closest('#admin-active-list') && !e.target.closest('#modal-content') && !e.target.closest('#camera-controls') && !e.target.closest('#eas-overlay')) {
+                 if (e.cancelable) e.preventDefault();
             }
             
-            // If dragging on UI, don't move camera/light
             if (e.target.tagName === 'BUTTON' || e.target.closest('button') || 
                 e.target.closest('#report-modal') || e.target.closest('#admin-panel')) return;
 
             const touch = e.touches[0];
-            updatePointer(touch.clientX, touch.clientY, true);
+            updatePointer(touch.clientX, touch.clientY);
         }, { passive: false });
 
         window.addEventListener('touchend', () => {
             flashlight.intensity = 0;
+            // Optional: Reset mouse vector to center when finger lifted?
+            // mouse.x = 0; mouse.y = 0; 
         });
 
         // ADMIN KEYS
@@ -2937,7 +3045,8 @@
             let targetY = currentRoom.camPos.y;
             let baseFOV = 75;
 
-            // Apply Mouse Parallax with Limits
+            // Apply Mouse/Touch Parallax with Limits
+            // Using updated mouse vector which is now relative to screen center (-1 to 1)
             const panX = Math.max(-1, Math.min(1, mouse.x * 0.5));
             const panY = Math.max(-0.5, Math.min(0.5, mouse.y * 0.3));
             targetX += panX;
