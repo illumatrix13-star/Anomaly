@@ -1,0 +1,3118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Night Shift: Sector 4</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --crt-color: #33ff33;
+            --crt-dim: #114411;
+            --crt-bg: #051005;
+            --ui-bg: rgba(0, 10, 0, 0.95);
+            --ui-border: #33ff33;
+            --danger: #ff3333;
+            --danger-dim: #551111;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--crt-color);
+            user-select: none;
+            text-shadow: 0 0 2px var(--crt-dim);
+        }
+
+        /* CANVAS VHS FILTER */
+        canvas {
+            filter: contrast(1.2) brightness(1.1) sepia(0.2) saturate(0.8) blur(0.5px);
+            z-index: 0;
+        }
+
+        /* CAMERA OVERLAYS (Offline / EAS) */
+        .camera-overlay {
+            position: fixed;
+            top: 0; 
+            left: 0;
+            width: 100%; 
+            height: 100%;
+            z-index: 5; /* Above canvas, below CRT effects */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        #offline-overlay {
+            background: #000;
+            color: #555;
+            font-family: monospace;
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px #555;
+        }
+
+        .blink-text {
+            animation: blink-fast 1s infinite;
+        }
+
+        #eas-overlay {
+            background: #0000AA; /* EAS Blue */
+            color: #FFF;
+            font-family: Arial, sans-serif; 
+            padding: 40px;
+            text-align: center;
+            justify-content: flex-start;
+            border: 20px solid #000;
+            box-sizing: border-box;
+            text-shadow: none;
+        }
+
+        .eas-header {
+            background: #000;
+            color: #FFF;
+            width: 100%;
+            padding: 15px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 40px;
+            letter-spacing: 2px;
+        }
+
+        .eas-body {
+            font-size: 1.8rem;
+            line-height: 1.6;
+            text-transform: uppercase;
+            font-weight: bold;
+            max-width: 800px;
+        }
+
+        .scary-text {
+            color: #FF0000; /* Red for scary */
+            margin-top: 20px;
+            display: block;
+            animation: shake 0.5s infinite;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        /* REAL WORLD UI */
+        #hide-ui {
+            position: fixed;
+            bottom: 50px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            pointer-events: auto;
+        }
+
+        .rw-btn {
+            background: #000;
+            border: 2px solid #fff;
+            color: #fff;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Courier New', Courier, monospace;
+            cursor: pointer;
+            text-transform: uppercase;
+            margin-top: 10px;
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+            transition: all 0.2s;
+        }
+
+        .rw-btn:hover {
+            background: #fff;
+            color: #000;
+            box-shadow: 0 0 25px rgba(255,255,255,0.8);
+            transform: scale(1.05);
+        }
+
+        #hide-btn { animation: blink-fast 0.5s infinite; }
+        
+        #reboot-container {
+            width: 500px;
+            border: 4px solid white;
+            padding: 4px;
+            background: #000;
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+        }
+
+        #reboot-bar {
+            width: 0%;
+            height: 30px;
+            background: #fff;
+            transition: width 0.1s linear;
+        }
+
+        #reboot-label {
+            color: white;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        /* CRT EFFECT LAYER */
+        #crt-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 10;
+            animation: flicker 0.15s infinite;
+        }
+
+        /* TRACKING LINE */
+        #crt-overlay::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: rgba(18, 16, 16, 0.1);
+            opacity: 0;
+            z-index: 12;
+            pointer-events: none;
+            animation: scanline 8s linear infinite;
+        }
+
+        #vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,1) 100%);
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            50% { opacity: 0.9; }
+            100% { opacity: 0.95; }
+        }
+
+        @keyframes scanline {
+            0% { transform: translateY(-100%); opacity: 0.1;}
+            50% { opacity: 0.1; }
+            100% { transform: translateY(100%); opacity: 0.1; }
+        }
+
+        @keyframes blink-fast {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        /* UI LAYOUT */
+        #game-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none; /* Let clicks pass to canvas if needed, but we use buttons */
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background: transparent; /* TRANSPARENT */
+            border: none; /* NO BORDER */
+            box-shadow: none; /* NO SHADOW */
+            pointer-events: none; /* Allow clicks through empty space */
+        }
+
+        .bottom-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 20px;
+            background: transparent; /* TRANSPARENT */
+            border: none; /* NO BORDER */
+            box-shadow: none; /* NO SHADOW */
+            pointer-events: none; /* Allow clicks through empty space */
+        }
+
+        /* Make children clickable again */
+        .top-bar > div, .bottom-bar > div, .bottom-bar > button {
+            pointer-events: auto;
+        }
+
+        /* COMPONENTS */
+        #camera-controls {
+            display: flex;
+            flex-wrap: wrap; /* Allow wrapping */
+            max-width: 70%;
+            gap: 10px;
+            pointer-events: auto;
+        }
+
+        .camera-btn {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--crt-color);
+            color: var(--crt-color);
+            padding: 10px 15px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.15s ease-in-out;
+            text-transform: uppercase;
+            box-shadow: 0 0 5px var(--crt-dim);
+            font-size: 0.9rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .camera-btn:hover {
+            background: var(--crt-color);
+            color: #000;
+            box-shadow: 0 0 15px var(--crt-color);
+            transform: translateY(-2px);
+        }
+
+        .camera-btn.active {
+            background: var(--crt-color);
+            color: #000;
+            box-shadow: inset 0 0 10px #000, 0 0 10px var(--crt-color);
+            border: 1px solid #fff;
+        }
+
+        #report-btn {
+            background: rgba(17, 0, 0, 0.8);
+            border: 2px solid var(--danger);
+            color: var(--danger);
+            font-size: 1.2rem;
+            padding: 15px 30px;
+            animation: pulse-red 2s infinite;
+            margin-bottom: 10px;
+            pointer-events: auto; /* Ensure clickable */
+            transition: all 0.2s;
+            font-weight: bold;
+            box-shadow: 0 0 10px var(--danger-dim);
+            text-transform: uppercase;
+        }
+
+        #report-btn:hover {
+            background: var(--danger);
+            color: #000;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--danger);
+        }
+
+        #report-btn:disabled {
+            border-color: #555;
+            color: #555;
+            animation: none;
+            cursor: not-allowed;
+            background: #111;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .status-panel {
+            text-align: right;
+            font-size: 1.2rem;
+            text-shadow: 0 0 8px var(--crt-color);
+            background: rgba(0,0,0,0.5); /* Slight background for readability */
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        .rec-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background-color: #ff0000;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+            margin-right: 8px;
+            box-shadow: 0 0 5px #ff0000;
+        }
+
+        /* REPORT MODAL */
+        #report-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 15, 0, 0.98);
+            border: 2px solid var(--crt-color);
+            padding: 15px; /* Reduced Padding */
+            width: 260px; /* Reduced Width */
+            pointer-events: auto;
+            box-shadow: 0 0 40px rgba(51, 255, 51, 0.2);
+            z-index: 50; /* FIXED: High z-index to appear above UI */
+        }
+
+        #report-modal h2 {
+            margin-top: 0;
+            border-bottom: 2px dashed var(--crt-color);
+            padding-bottom: 8px; /* Reduced */
+            margin-bottom: 8px; /* Reduced */
+            text-align: center;
+            letter-spacing: 2px;
+            color: var(--crt-color);
+            text-shadow: 0 0 5px var(--crt-color);
+            font-size: 1.2rem; /* Reduced */
+        }
+
+        #modal-content {
+            display: flex;
+            flex-direction: column;
+            gap: 5px; /* Reduced gap */
+        }
+
+        .report-option {
+            display: block;
+            width: 100%;
+            background: #000;
+            border: 1px solid var(--crt-dim);
+            color: var(--crt-color);
+            padding: 6px 10px; /* Reduced Padding */
+            text-align: left;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem; /* Reduced Font */
+            transition: all 0.1s;
+        }
+
+        .report-option:hover {
+            background: var(--crt-color);
+            color: #000;
+            box-shadow: 0 0 10px var(--crt-color);
+            border-color: var(--crt-color);
+            font-weight: bold;
+        }
+
+        .report-back {
+            margin-top: 10px;
+            background: #220000;
+            color: #ff5555;
+            border: 1px solid #550000;
+            text-align: center;
+        }
+        
+        .report-back:hover {
+            background: #ff5555;
+            color: #000;
+            box-shadow: 0 0 10px #ff5555;
+            border-color: #ff5555;
+        }
+
+        #close-report {
+            margin-top: 10px;
+            width: 100%;
+            background: #111;
+            color: #666;
+            border: 1px solid #333;
+            padding: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        
+        #close-report:hover {
+            background: #333;
+            color: #fff;
+        }
+
+        /* ADMIN PANEL */
+        #admin-panel {
+            display: none;
+            position: fixed;
+            top: 80px;
+            right: 30px;
+            width: 320px;
+            background: rgba(0, 5, 0, 0.95);
+            border: 2px solid var(--crt-color);
+            color: var(--crt-color);
+            padding: 20px;
+            z-index: 1000;
+            font-family: monospace;
+            pointer-events: auto;
+            box-shadow: -5px 5px 0px rgba(0, 50, 0, 0.5);
+        }
+
+        #admin-panel h3 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--crt-color);
+            padding-bottom: 10px;
+            text-align: center;
+        }
+
+        .admin-row {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .admin-row select, .admin-row button {
+            background: #001100;
+            color: var(--crt-color);
+            border: 1px solid var(--crt-dim);
+            padding: 8px;
+            font-family: inherit;
+            cursor: pointer;
+            flex-grow: 1;
+            outline: none;
+        }
+        
+        .admin-row select:focus, .admin-row button:hover {
+            border-color: var(--crt-color);
+            box-shadow: 0 0 5px var(--crt-color);
+        }
+
+        #admin-active-list {
+            margin-top: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid var(--crt-dim);
+            padding: 5px;
+            background: #000;
+        }
+
+        .admin-item {
+            display: flex;
+            justify-content: space-between;
+            background: #051505;
+            padding: 5px;
+            margin-bottom: 3px;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #113311;
+        }
+
+        .admin-remove {
+            color: #ff5555;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0 5px;
+        }
+        
+        .admin-remove:hover {
+            background: #ff5555;
+            color: #000;
+        }
+
+        /* FEEDBACK MESSAGES */
+        #feedback {
+            position: absolute;
+            top: 20%; /* MOVED TO TOP */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2.5rem;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+            text-align: center;
+            background: rgba(0,0,0,0.9);
+            padding: 30px 50px;
+            border: 3px solid white;
+            white-space: pre-wrap;
+            z-index: 60;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        /* GAME OVER SCREEN */
+        #game-over {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: var(--danger);
+        }
+
+        #start-screen {
+            display: flex;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: var(--crt-color);
+        }
+        
+        #start-screen h1 {
+            font-size: 4rem;
+            text-shadow: 0 0 10px var(--crt-color);
+            margin-bottom: 20px;
+            letter-spacing: 5px;
+            border-bottom: 4px double var(--crt-color);
+            padding-bottom: 10px;
+        }
+        
+        #start-btn {
+            font-size: 2rem; 
+            padding: 20px 60px; 
+            margin-top: 40px;
+            border: 2px solid var(--crt-color);
+        }
+
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 51, 51, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 51, 51, 0); } }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- VISUAL EFFECTS -->
+    <div id="crt-overlay"></div>
+    <div id="vignette"></div>
+
+    <!-- CAMERA OVERLAYS -->
+    <div id="offline-overlay" class="camera-overlay hidden">
+        <div class="blink-text">CAMERA OFFLINE</div>
+        <div style="font-size: 1rem; margin-top: 20px;">NO SIGNAL</div>
+    </div>
+
+    <div id="eas-overlay" class="camera-overlay hidden">
+        <div class="eas-header">EMERGENCY ALERT SYSTEM</div>
+        <div class="eas-body">
+            <p>CIVIL DANGER WARNING</p>
+            <p>THE FOLLOWING MESSAGE IS TRANSMITTED AT THE REQUEST OF LOCAL AUTHORITIES.</p>
+            <span class="scary-text">NON-HUMAN BIOLOGICAL ENTITY DETECTED ON PREMISES.</span>
+            <span class="scary-text">DO NOT ATTEMPT TO INTERACT.</span>
+            <span class="scary-text" style="font-size: 2.5rem; margin-top: 30px;">HIDE. HIDE. HIDE.</span>
+        </div>
+    </div>
+
+    <!-- REAL WORLD HIDE UI -->
+    <div id="hide-ui" class="hidden">
+        <button id="hide-btn" class="rw-btn">HIDE UNDER DESK</button>
+        <button id="exit-hide-btn" class="rw-btn hidden">CLIMB OUT</button>
+        <button id="monitor-btn" class="rw-btn hidden">REBOOT SYSTEM</button>
+        
+        <div id="reboot-ui" class="hidden" style="text-align: center;">
+            <div id="reboot-label">SYSTEM REBOOTING...</div>
+            <div id="reboot-container">
+                <div id="reboot-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI -->
+    <div id="game-ui">
+        <div class="top-bar">
+            <div>
+                <div class="rec-dot"></div> REC <span id="time-display">00:00 AM</span>
+            </div>
+            <div class="status-panel">
+                FACILITY STATUS: <span id="anomaly-count">SAFE</span>
+            </div>
+        </div>
+
+        <div id="feedback"></div>
+
+        <div class="bottom-bar">
+            <div id="camera-controls">
+                <!-- Injected via JS -->
+            </div>
+            <button id="report-btn" class="camera-btn">! REPORT ANOMALY !</button>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="report-modal">
+        <h2 id="modal-title">SELECT ROOM</h2>
+        <div id="modal-content">
+            <!-- Dynamic Content -->
+        </div>
+        <button id="close-report">CANCEL</button>
+    </div>
+
+    <!-- ADMIN PANEL -->
+    <div id="admin-panel">
+        <h3>ADMIN MENU</h3>
+        <div class="admin-row">
+            <select id="admin-room-select"></select>
+        </div>
+        <div class="admin-row">
+            <select id="admin-type-select">
+                <option value="intruder">Intruder</option>
+                <option value="displacement">Displacement</option>
+                <option value="missing">Missing</option>
+                <option value="extra">Extra Object</option>
+                <option value="malfunction">Malfunction</option>
+                <option value="camera">Camera Glitch</option>
+            </select>
+        </div>
+        <div class="admin-row">
+            <select id="admin-subtype-select">
+                <option value="">Any/Random</option>
+            </select>
+        </div>
+        <div class="admin-row">
+            <button id="admin-spawn-btn">SPAWN</button>
+            <button id="admin-clear-btn" style="background: #330000; border-color: #ff0000; color: #ff5555;">CLEAR ALL</button>
+        </div>
+        <div id="admin-active-list">
+            <!-- Active Anomalies -->
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>NIGHT SHIFT: SECTOR 4</h1>
+        <p>Your job is to monitor the facility feeds.</p>
+        <p>If you see something change, REPORT it immediately.</p>
+        <p>If too many anomalies accumulate, you will be terminated.</p>
+        <p style="margin-top: 10px; font-size: 0.8rem; color: #888;">(HOLD LEFT CLICK OR TOUCH SCREEN FOR FLASHLIGHT)</p>
+        <br>
+        <button class="camera-btn" id="start-btn">START SHIFT</button>
+    </div>
+
+    <div id="game-over">
+        <h1 style="font-size: 4rem;">SIGNAL LOST</h1>
+        <p id="game-over-reason">TOO MANY ANOMALIES DETECTED</p>
+        <button class="camera-btn" onclick="location.reload()">RETRY</button>
+    </div>
+
+    <script>
+        // --- GAME STATE ---
+        const gameState = {
+            activeCamera: 0,
+            rooms: [],
+            anomalies: [], // Stores active anomaly objects
+            maxAnomalies: 7, 
+            gameTime: 0, // In minutes (simulated)
+            shiftDuration: 360, // 6 hours * 60 mins
+            active: false,
+            difficultyTimer: 0,
+            reportProcessing: false,
+            mode: 'CAMERAS', // 'CAMERAS' or 'REAL_WORLD'
+            isHiding: false,
+            realWorldRef: null, // To access real world meshes
+            easTriggered: false // Prevent double trigger
+        };
+
+        const config = {
+            anomalyIntervalBase: 12000, 
+            minInterval: 5000
+        };
+
+        // --- THREE.JS SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.FogExp2(0x000000, 0.035);
+
+        // AMBIENT LIGHT TO FIX "BLACK BOX" SHADOWS
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.35);
+        scene.add(ambientLight);
+
+        // FLASHLIGHT SETUP
+        const flashlight = new THREE.SpotLight(0xffffff, 0, 45, 0.5, 0.5, 1);
+        flashlight.castShadow = false; 
+        scene.add(flashlight);
+        scene.add(flashlight.target);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: false }); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+        document.body.appendChild(renderer.domElement);
+
+        // MOUSE & TOUCH TRACKING FOR FLASHLIGHT & PANNING
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+
+        function updatePointer(x, y, isTouch) {
+            // Offset Y slightly up (negative pixel Y) so finger doesn't hide center
+            const yOffset = isTouch ? -120 : 0; 
+            
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -((y + yOffset) / window.innerHeight) * 2 + 1;
+
+            // Project ray for flashlight target
+            raycaster.setFromCamera(mouse, camera);
+            const targetPos = new THREE.Vector3().copy(raycaster.ray.direction).multiplyScalar(10).add(camera.position);
+            flashlight.target.position.copy(targetPos);
+        }
+
+        window.addEventListener('mousemove', (event) => {
+            if (!gameState.active) return;
+            updatePointer(event.clientX, event.clientY, false);
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'BUTTON') return;
+            if (e.target.closest('#report-modal') || e.target.closest('#admin-panel')) return;
+            if (document.getElementById('report-modal').style.display === 'block') return;
+            if (!gameState.active) return;
+            
+            flashlight.intensity = 1.2; // Turn on
+        });
+
+        window.addEventListener('mouseup', () => {
+            flashlight.intensity = 0; // Turn off
+        });
+
+        // TOUCH EVENTS
+        window.addEventListener('touchstart', (e) => {
+            // Check UI interactions
+            if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+            if (e.target.closest('#report-modal') || e.target.closest('#admin-panel')) return;
+            if (document.getElementById('report-modal').style.display === 'block') return;
+            if (!gameState.active) return;
+
+            e.preventDefault(); // Prevent mouse emulation
+            const touch = e.touches[0];
+            updatePointer(touch.clientX, touch.clientY, true);
+            flashlight.intensity = 1.2;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!gameState.active) return;
+            // Allow scrolling in admin/modal lists, block elsewhere
+            if (!e.target.closest('#admin-active-list') && !e.target.closest('#modal-content')) {
+                 e.preventDefault();
+            }
+            
+            // If dragging on UI, don't move camera/light
+            if (e.target.tagName === 'BUTTON' || e.target.closest('button') || 
+                e.target.closest('#report-modal') || e.target.closest('#admin-panel')) return;
+
+            const touch = e.touches[0];
+            updatePointer(touch.clientX, touch.clientY, true);
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            flashlight.intensity = 0;
+        });
+
+        // ADMIN KEYS
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if (keys['0'] && keys['p']) {
+                const p = document.getElementById('admin-panel');
+                p.style.display = p.style.display === 'none' ? 'block' : 'none';
+                updateAdminList();
+            }
+        });
+        window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+        // --- ASSET GENERATION HELPERS ---
+        const materials = {
+            wall: new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 }),
+            floor: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 }),
+            wood: new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.6 }),
+            metal: new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 }),
+            fabric: new THREE.MeshStandardMaterial({ color: 0x333366, roughness: 1.0 }),
+            rug: new THREE.MeshStandardMaterial({ color: 0x442222, roughness: 1.0 }),
+            plantGreen: new THREE.MeshStandardMaterial({ color: 0x224422, roughness: 0.8 }),
+            glass: new THREE.MeshPhongMaterial({ color: 0x88ccff, opacity: 0.2, transparent: true, shininess: 100 }),
+            white: new THREE.MeshStandardMaterial({ color: 0xcccccc }),
+            whiteScreen: new THREE.MeshBasicMaterial({ color: 0xffffff }), // For laptop glitch
+            black: new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.4, metalness: 0.5 }),
+            glowingEyes: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+            redLight: new THREE.MeshBasicMaterial({ color: 0xff0000 }),
+            greenLight: new THREE.MeshBasicMaterial({ color: 0x00ff00 }),
+            redPaint: new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 }),
+            reflectiveMetal: new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.1 }),
+            intruderBody: new THREE.MeshLambertMaterial({ color: 0x111111 }),
+            handle: new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.2 }),
+            glow: new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.3 }),
+            rust: new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9, metalness: 0.2 })
+        };
+
+        function createMesh(geometry, material, castShadow = true) {
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = castShadow;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        // --- TEXT TEXTURE GENERATOR ---
+        function createTextTexture(text, bgColor, textColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, 256, 128);
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 60px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- ROOM CONSTRUCTION ---
+        
+        const createRoomBase = (xOffset, hasWindow = true) => {
+            const group = new THREE.Group();
+            group.position.set(xOffset, 0, 0);
+
+            // Floor
+            const floor = createMesh(new THREE.PlaneGeometry(10, 10), materials.floor);
+            floor.rotation.x = -Math.PI / 2;
+            group.add(floor);
+
+            // Walls (Left, Right)
+            const leftWall = createMesh(new THREE.BoxGeometry(0.5, 6, 10), materials.wall);
+            leftWall.position.set(-5, 3, 0);
+            group.add(leftWall);
+            
+            const rightWall = createMesh(new THREE.BoxGeometry(0.5, 6, 10), materials.wall);
+            rightWall.position.set(5, 3, 0);
+            group.add(rightWall);
+
+            // Back Wall Logic
+            if (!hasWindow) {
+                const backWall = createMesh(new THREE.BoxGeometry(10, 6, 0.5), materials.wall);
+                backWall.position.set(0, 3, -5);
+                group.add(backWall);
+            } else {
+                const bottom = createMesh(new THREE.BoxGeometry(10, 2, 0.5), materials.wall);
+                bottom.position.set(0, 1, -5);
+                group.add(bottom);
+                const top = createMesh(new THREE.BoxGeometry(10, 1, 0.5), materials.wall);
+                top.position.set(0, 5.5, -5);
+                group.add(top);
+                const left = createMesh(new THREE.BoxGeometry(2.5, 3.5, 0.5), materials.wall);
+                left.position.set(-3.75, 3.25, -5);
+                group.add(left);
+                const right = createMesh(new THREE.BoxGeometry(2.5, 3.5, 0.5), materials.wall);
+                right.position.set(3.75, 3.25, -5);
+                group.add(right);
+                const glass = createMesh(new THREE.BoxGeometry(5, 3.5, 0.1), materials.glass, false);
+                glass.position.set(0, 3.25, -5);
+                group.add(glass);
+            }
+
+            // Ceiling
+            const ceiling = createMesh(new THREE.PlaneGeometry(10, 10), materials.wall);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = 6;
+            group.add(ceiling);
+
+            // Main Light
+            const light = new THREE.PointLight(0xffffee, 0.9, 18);
+            light.position.set(0, 5.5, 0);
+            light.castShadow = true;
+            // Shadow Quality
+            light.shadow.mapSize.width = 1024;
+            light.shadow.mapSize.height = 1024;
+            light.shadow.bias = -0.001; 
+            group.add(light);
+
+            return { group, light };
+        };
+
+        function buildLivingRoom(index) {
+            const { group, light } = createRoomBase(index * 20, true);
+            const props = {};
+
+            // DETAILED SOFA
+            const sofaGroup = new THREE.Group();
+            // 4 Legs
+            const sLeg1 = createMesh(new THREE.CylinderGeometry(0.08, 0.05, 0.3), materials.wood); sLeg1.position.set(-1.8, 0.15, -0.6);
+            const sLeg2 = createMesh(new THREE.CylinderGeometry(0.08, 0.05, 0.3), materials.wood); sLeg2.position.set(1.8, 0.15, -0.6);
+            const sLeg3 = createMesh(new THREE.CylinderGeometry(0.08, 0.05, 0.3), materials.wood); sLeg3.position.set(-1.8, 0.15, 0.6);
+            const sLeg4 = createMesh(new THREE.CylinderGeometry(0.08, 0.05, 0.3), materials.wood); sLeg4.position.set(1.8, 0.15, 0.6);
+            sofaGroup.add(sLeg1); sofaGroup.add(sLeg2); sofaGroup.add(sLeg3); sofaGroup.add(sLeg4);
+            // Base
+            const sBase = createMesh(new THREE.BoxGeometry(4, 0.4, 1.5), materials.fabric);
+            sBase.position.y = 0.5;
+            sofaGroup.add(sBase);
+            // Seat Cushions (3)
+            for(let k=-1; k<=1; k++) {
+                const cushion = createMesh(new THREE.BoxGeometry(1.2, 0.2, 1.4), materials.fabric);
+                cushion.position.set(k * 1.25, 0.8, 0);
+                sofaGroup.add(cushion);
+            }
+            // Backrest
+            const sBack = createMesh(new THREE.BoxGeometry(4, 1.2, 0.3), materials.fabric);
+            sBack.position.set(0, 1.1, -0.6);
+            sofaGroup.add(sBack);
+            // Armrests
+            const sArmL = createMesh(new THREE.BoxGeometry(0.3, 0.8, 1.5), materials.fabric); sArmL.position.set(-1.85, 0.9, 0);
+            const sArmR = createMesh(new THREE.BoxGeometry(0.3, 0.8, 1.5), materials.fabric); sArmR.position.set(1.85, 0.9, 0);
+            sofaGroup.add(sArmL); sofaGroup.add(sArmR);
+            
+            sofaGroup.position.set(0, 0, -4.0);
+            group.add(sofaGroup);
+            props['sofa'] = { mesh: sofaGroup, type: 'displacement' };
+
+            // Extra Object: Cushion
+            const cushion = createMesh(new THREE.BoxGeometry(0.8, 0.8, 0.2), materials.white);
+            cushion.position.set(0, 0.8, -4.3);
+            cushion.rotation.x = -0.2;
+            cushion.visible = false;
+            group.add(cushion);
+            props['extra'] = { mesh: cushion, type: 'extra' };
+
+            // DETAILED Coffee Table
+            const tableGroup = new THREE.Group();
+            const tTop = createMesh(new THREE.BoxGeometry(2, 0.1, 1.2), materials.wood); tTop.position.y = 0.5;
+            // Glass insert
+            const tGlass = createMesh(new THREE.BoxGeometry(1.6, 0.02, 0.8), materials.glass, false); tGlass.position.y = 0.51;
+            // Legs
+            const tl1 = createMesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), materials.wood); tl1.position.set(-0.9, 0.25, -0.5);
+            const tl2 = createMesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), materials.wood); tl2.position.set(0.9, 0.25, -0.5);
+            const tl3 = createMesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), materials.wood); tl3.position.set(-0.9, 0.25, 0.5);
+            const tl4 = createMesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), materials.wood); tl4.position.set(0.9, 0.25, 0.5);
+            tableGroup.add(tTop); tableGroup.add(tGlass); 
+            tableGroup.add(tl1); tableGroup.add(tl2); tableGroup.add(tl3); tableGroup.add(tl4);
+            // Remote control
+            const remote = createMesh(new THREE.BoxGeometry(0.1, 0.05, 0.3), materials.black);
+            remote.position.set(0.5, 0.55, 0.2); remote.rotation.y = 0.5;
+            tableGroup.add(remote);
+            
+            tableGroup.position.set(0, 0, -1);
+            group.add(tableGroup);
+            props['coffeeTable'] = { mesh: tableGroup, type: 'displacement' };
+
+            // Rug
+            const rug = createMesh(new THREE.PlaneGeometry(4, 3), materials.rug);
+            rug.rotation.x = -Math.PI / 2;
+            rug.position.set(0, 0.01, 0);
+            group.add(rug);
+            props['rug'] = { mesh: rug, type: 'missing' };
+
+            // DETAILED TV Stand
+            const tvStandGroup = new THREE.Group();
+            const tsBody = createMesh(new THREE.BoxGeometry(2, 0.8, 1), materials.wood);
+            tsBody.position.y = 0.4;
+            // Doors
+            const tsDoorL = createMesh(new THREE.BoxGeometry(0.9, 0.7, 0.05), materials.wood); tsDoorL.position.set(-0.45, 0.4, 0.51);
+            const tsDoorR = createMesh(new THREE.BoxGeometry(0.9, 0.7, 0.05), materials.wood); tsDoorR.position.set(0.45, 0.4, 0.51);
+            const tsKnobL = createMesh(new THREE.SphereGeometry(0.05), materials.handle); tsKnobL.position.set(0.3, 0, 0.05); tsDoorL.add(tsKnobL);
+            const tsKnobR = createMesh(new THREE.SphereGeometry(0.05), materials.handle); tsKnobR.position.set(-0.3, 0, 0.05); tsDoorR.add(tsKnobR);
+            tvStandGroup.add(tsBody); tvStandGroup.add(tsDoorL); tvStandGroup.add(tsDoorR);
+            tvStandGroup.position.set(0, 0, 3);
+            group.add(tvStandGroup);
+
+            // DETAILED TV
+            const tvGroup = new THREE.Group();
+            const tvScreen = createMesh(new THREE.BoxGeometry(1.8, 1, 0.1), materials.black);
+            tvScreen.position.y = 1.1;
+            const tvBezel = createMesh(new THREE.BoxGeometry(1.9, 1.1, 0.05), materials.black);
+            tvBezel.position.set(0, 1.1, -0.05);
+            // Neck
+            const tvNeck = createMesh(new THREE.BoxGeometry(0.2, 0.3, 0.1), materials.black);
+            tvNeck.position.set(0, 0.5, 0);
+            // Base
+            const tvBase = createMesh(new THREE.BoxGeometry(0.8, 0.05, 0.4), materials.black);
+            tvBase.position.set(0, 0.35, 0);
+            
+            // TV Glow
+            const tvGlow = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1, 0.05), materials.glow);
+            tvGlow.position.set(0, 1.1, 0.05);
+            tvGlow.visible = false;
+            
+            tvGroup.add(tvScreen); tvGroup.add(tvBezel); tvGroup.add(tvNeck); tvGroup.add(tvBase); tvGroup.add(tvGlow);
+            tvGroup.position.set(0, 0.8, 3);
+            group.add(tvGroup);
+            props['tv'] = { mesh: tvScreen, type: 'malfunction', glow: tvGlow }; // Link malfunction to screen
+
+            // Painting (Framed)
+            const paintingGroup = new THREE.Group();
+            const frame = createMesh(new THREE.BoxGeometry(2.2, 1.7, 0.1), materials.wood);
+            const canvas = createMesh(new THREE.BoxGeometry(2, 1.5, 0.05), materials.white);
+            canvas.position.z = 0.05;
+            paintingGroup.add(frame); paintingGroup.add(canvas);
+            paintingGroup.position.set(-4.9, 3, -4);
+            paintingGroup.rotation.y = Math.PI / 2;
+            group.add(paintingGroup);
+            props['painting'] = { mesh: paintingGroup, type: 'missing' };
+
+            // NEW POSTER - Side Wall
+            const poster = createMesh(new THREE.BoxGeometry(0.05, 1.5, 1), materials.white);
+            // Place on Left wall (x=-4.9), but forward enough to avoid painting (z=0 area)
+            poster.position.set(-4.9, 3, 0); 
+            group.add(poster);
+            props['poster'] = { mesh: poster, type: 'missing' };
+
+            // Floor Lamp (Refined)
+            const lampGroup = new THREE.Group();
+            const lampBase = createMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16), materials.metal);
+            const lampPole = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 4, 8), materials.metal);
+            lampPole.position.y = 2;
+            const lampShade = createMesh(new THREE.ConeGeometry(0.6, 1, 16, 1, true), materials.fabric);
+            lampShade.position.y = 4;
+            // Switch
+            const lSwitch = createMesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), materials.black); lSwitch.position.set(0, 3, 0.05);
+            
+            // Lamp Light source
+            const lampLight = new THREE.PointLight(0xffaa00, 0, 5); // Off by default
+            lampLight.position.set(0, 3.8, 0);
+            // Lamp Glow Sphere
+            const lampGlow = new THREE.Mesh(new THREE.SphereGeometry(0.8), materials.glow);
+            lampGlow.position.set(0, 3.8, 0);
+            lampGlow.visible = false;
+            
+            lampGroup.add(lampLight);
+            lampGroup.add(lampBase); lampGroup.add(lampPole); lampGroup.add(lSwitch);
+            lampGroup.add(lampShade);
+            lampGroup.add(lampGlow);
+            lampGroup.position.set(-3, 0, -3);
+            group.add(lampGroup);
+            props['lamp'] = { mesh: lampGroup, type: 'malfunction', light: lampLight, shade: lampShade, glow: lampGlow };
+
+            // Plant (RE-DESIGNED)
+            const plantGroup = new THREE.Group();
+            // White pot base
+            const pot = createMesh(new THREE.CylinderGeometry(0.4, 0.3, 0.6, 16), materials.white);
+            pot.position.y = 0.3;
+            plantGroup.add(pot);
+            // Green foliage (thinner, taller)
+            const stem = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 2, 8), materials.plantGreen);
+            stem.position.y = 1.3;
+            plantGroup.add(stem);
+            // Leaves
+            const leaf1 = createMesh(new THREE.BoxGeometry(0.8, 0.8, 0.1), materials.plantGreen);
+            leaf1.position.set(0, 1.8, 0);
+            leaf1.rotation.x = Math.PI / 4;
+            plantGroup.add(leaf1);
+            const leaf2 = createMesh(new THREE.BoxGeometry(0.8, 0.8, 0.1), materials.plantGreen);
+            leaf2.position.set(0, 1.4, 0);
+            leaf2.rotation.z = Math.PI / 4;
+            plantGroup.add(leaf2);
+            
+            plantGroup.position.set(4, 0, -4); 
+            group.add(plantGroup);
+            props['plant'] = { mesh: plantGroup, type: 'missing' };
+
+            return { 
+                id: 'LIVING ROOM', 
+                group, 
+                light, 
+                props, 
+                hasWindow: true,
+                camPos: { x: index * 20 + 3, y: 5, z: 3 }, 
+                lookAt: { x: index * 20 - 1, y: 1, z: -2 },
+                intruderPos: new THREE.Vector3(3, 0, -3),
+                windowIntruderPos: new THREE.Vector3(0, 2.5, -6)
+            };
+        }
+
+        function buildKitchen(index) {
+            const { group, light } = createRoomBase(index * 20, true);
+            const props = {};
+
+            // DETAILED TABLE
+            const tableGroup = new THREE.Group();
+            const tableTop = createMesh(new THREE.BoxGeometry(3, 0.1, 2), materials.wood);
+            tableTop.position.set(0, 1, 0);
+            tableGroup.add(tableTop);
+            // 4 Legs
+            const tLegGeo = new THREE.BoxGeometry(0.15, 1, 0.15);
+            const l1 = createMesh(tLegGeo, materials.wood); l1.position.set(-1.3, 0.5, -0.8);
+            const l2 = createMesh(tLegGeo, materials.wood); l2.position.set(1.3, 0.5, -0.8);
+            const l3 = createMesh(tLegGeo, materials.wood); l3.position.set(-1.3, 0.5, 0.8);
+            const l4 = createMesh(tLegGeo, materials.wood); l4.position.set(1.3, 0.5, 0.8);
+            tableGroup.add(l1); tableGroup.add(l2); tableGroup.add(l3); tableGroup.add(l4);
+            group.add(tableGroup);
+
+            // Pizza Box
+            const pizzaBox = createMesh(new THREE.BoxGeometry(0.8, 0.1, 0.8), materials.white);
+            pizzaBox.position.set(0.5, 1.1, 0.5);
+            group.add(pizzaBox);
+            props['pizza'] = { mesh: pizzaBox, type: 'displacement' };
+
+            // SCATTERED CUPS/PLATES
+            const clutterGroup = new THREE.Group();
+            // Plate 1
+            const p1 = createMesh(new THREE.CylinderGeometry(0.3, 0.2, 0.05), materials.white);
+            p1.position.set(-0.8, 1.05, -0.5); clutterGroup.add(p1);
+            // Plate 2
+            const p2 = createMesh(new THREE.CylinderGeometry(0.3, 0.2, 0.05), materials.white);
+            p2.position.set(-0.5, 1.05, 0.6); clutterGroup.add(p2);
+            // Cup 1
+            const c1 = createMesh(new THREE.CylinderGeometry(0.08, 0.08, 0.15), materials.white);
+            c1.position.set(-0.3, 1.1, -0.3); clutterGroup.add(c1);
+            // Cup 2 (Red)
+            const c2 = createMesh(new THREE.CylinderGeometry(0.08, 0.08, 0.15), materials.redPaint);
+            c2.position.set(1.1, 1.1, -0.7); clutterGroup.add(c2);
+
+            group.add(clutterGroup);
+            props['table_clutter'] = { mesh: clutterGroup, type: 'missing' };
+
+            // Improved Chair
+            const chairGroup = new THREE.Group();
+            chairGroup.position.set(1, 0, 1.5);
+            const cSeat = createMesh(new THREE.BoxGeometry(1, 0.1, 1), materials.wood);
+            cSeat.position.y = 0.8;
+            const cBack = createMesh(new THREE.BoxGeometry(1, 1, 0.1), materials.wood);
+            cBack.position.set(0, 1.3, 0.45);
+            // Spindles for back
+            const cSpindle = new THREE.CylinderGeometry(0.02, 0.02, 1);
+            for(let k=-0.3; k<=0.3; k+=0.2){
+                 const s = createMesh(cSpindle, materials.wood);
+                 s.position.set(k, 1.3, 0.45);
+                 chairGroup.add(s);
+            }
+
+            const cLeg1 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), materials.metal);
+            cLeg1.position.set(-0.4, 0.4, -0.4);
+            const cLeg2 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), materials.metal);
+            cLeg2.position.set(0.4, 0.4, -0.4);
+            const cLeg3 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), materials.metal);
+            cLeg3.position.set(-0.4, 0.4, 0.4);
+            const cLeg4 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8), materials.metal);
+            cLeg4.position.set(0.4, 0.4, 0.4);
+            chairGroup.add(cSeat); chairGroup.add(cBack);
+            chairGroup.add(cLeg1); chairGroup.add(cLeg2); chairGroup.add(cLeg3); chairGroup.add(cLeg4);
+            group.add(chairGroup);
+            props['chair'] = { mesh: chairGroup, type: 'displacement' };
+
+            // Kitchen Rug
+            const kRug = createMesh(new THREE.PlaneGeometry(6, 2), materials.rug);
+            kRug.rotation.x = -Math.PI / 2;
+            kRug.position.set(0, 0.01, -2.5);
+            group.add(kRug);
+            props['kitchen_rug'] = { mesh: kRug, type: 'missing' };
+
+            // Extra Object: Plate (MOVED NEXT TO FRIDGE)
+            const plate = createMesh(new THREE.CylinderGeometry(0.4, 0.3, 0.05), materials.white);
+            plate.position.set(-2.8, 1.05, -4); // Moved to counter
+            plate.visible = false;
+            group.add(plate);
+            props['extra'] = { mesh: plate, type: 'extra' };
+
+            // DETAILED Counter with SINK HOLE
+            const counterGroup = new THREE.Group();
+            
+            // Sink is at x=2, width 1.5, depth 1.2
+            // Counter runs from x=-4 to x=4. depth 1.5. center z=-4.25
+            
+            // Left Slab (x = -4 to 1.25) Width = 5.25. Center = -1.375
+            const cLeft = createMesh(new THREE.BoxGeometry(5.25, 0.1, 1.5), materials.white);
+            cLeft.position.set(-1.375, 1, -4.25);
+            
+            // Right Slab (x = 2.75 to 4). Width = 1.25. Center = 3.375
+            const cRight = createMesh(new THREE.BoxGeometry(1.25, 0.1, 1.5), materials.white);
+            cRight.position.set(3.375, 1, -4.25);
+
+            // Front Strip (x=2, width=1.5, depth=0.15) (Counter z-front is -3.5)
+            // Sink front is -3.65. Strip center: -3.575
+            const cFront = createMesh(new THREE.BoxGeometry(1.5, 0.1, 0.15), materials.white);
+            cFront.position.set(2, 1, -3.575);
+
+            // Back Strip (Counter z-back is -5)
+            // Sink back is -4.85. Strip center: -4.925
+            const cBackStrip = createMesh(new THREE.BoxGeometry(1.5, 0.1, 0.15), materials.white);
+            cBackStrip.position.set(2, 1, -4.925);
+
+            counterGroup.add(cLeft); counterGroup.add(cRight); counterGroup.add(cFront); counterGroup.add(cBackStrip);
+
+            const counterBase = createMesh(new THREE.BoxGeometry(8, 1, 1.4), materials.wood);
+            counterBase.position.set(0, 0.5, -4.3);
+            
+            // Cabinet Doors
+            for(let i=0; i<4; i++) {
+                const door = createMesh(new THREE.BoxGeometry(1.8, 0.8, 0.05), materials.wood);
+                door.position.set(-3 + (i*2), 0.5, -3.59);
+                const knob = createMesh(new THREE.SphereGeometry(0.05), materials.handle);
+                knob.position.set(0.7, 0, 0.05);
+                door.add(knob);
+                counterGroup.add(door);
+            }
+            counterGroup.add(counterBase);
+            group.add(counterGroup);
+
+            // DETAILED Stove Top
+            const stoveGroup = new THREE.Group();
+            const stoveBase = createMesh(new THREE.BoxGeometry(1.5, 0.1, 1.2), materials.black);
+            stoveGroup.add(stoveBase);
+            // Burners
+            const burnerGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.05, 16);
+            const b1 = createMesh(burnerGeo, materials.metal); b1.position.set(-0.4, 0.05, -0.3);
+            const b2 = createMesh(burnerGeo, materials.metal); b2.position.set(0.4, 0.05, -0.3);
+            const b3 = createMesh(burnerGeo, materials.metal); b3.position.set(-0.4, 0.05, 0.3);
+            const b4 = createMesh(burnerGeo, materials.metal); b4.position.set(0.4, 0.05, 0.3);
+            stoveGroup.add(b1); stoveGroup.add(b2); stoveGroup.add(b3); stoveGroup.add(b4);
+            // Knobs
+            for(let k=0; k<4; k++) {
+                const knob = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1), materials.handle);
+                knob.rotation.x = Math.PI/2;
+                knob.position.set(-0.5 + (k*0.33), 0, 0.65);
+                stoveGroup.add(knob);
+            }
+            stoveGroup.position.set(-1.5, 1.05, -4.25);
+            group.add(stoveGroup);
+
+             // SINK (Actually indented now)
+            const sinkGroup = new THREE.Group();
+            sinkGroup.position.set(2, 0.9, -4.25); // Lowered slightly
+            
+            // Basin Bottom
+            const sinkBasin = createMesh(new THREE.BoxGeometry(1.5, 0.1, 1.2), materials.metal);
+            sinkBasin.position.y = 0; 
+            
+            // Side Walls for depth illusion
+            const sL = createMesh(new THREE.BoxGeometry(0.05, 0.2, 1.2), materials.metal); sL.position.set(-0.725, 0.1, 0);
+            const sR = createMesh(new THREE.BoxGeometry(0.05, 0.2, 1.2), materials.metal); sR.position.set(0.725, 0.1, 0);
+            const sF = createMesh(new THREE.BoxGeometry(1.4, 0.2, 0.05), materials.metal); sF.position.set(0, 0.1, 0.575);
+            const sB = createMesh(new THREE.BoxGeometry(1.4, 0.2, 0.05), materials.metal); sB.position.set(0, 0.1, -0.575);
+
+            sinkGroup.add(sinkBasin); sinkGroup.add(sL); sinkGroup.add(sR); sinkGroup.add(sF); sinkGroup.add(sB);
+            
+            const faucetV = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4), materials.metal);
+            faucetV.position.set(0, 0.4, -0.5);
+            sinkGroup.add(faucetV);
+            const faucetH = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3), materials.metal);
+            faucetH.rotation.x = Math.PI / 2;
+            faucetH.position.set(0, 0.6, -0.35);
+            sinkGroup.add(faucetH);
+            // Handles
+            const h1 = createMesh(new THREE.BoxGeometry(0.1, 0.05, 0.05), materials.handle); h1.position.set(-0.15, 0.4, -0.5);
+            const h2 = createMesh(new THREE.BoxGeometry(0.1, 0.05, 0.05), materials.handle); h2.position.set(0.15, 0.4, -0.5);
+            sinkGroup.add(h1); sinkGroup.add(h2);
+            
+            group.add(sinkGroup);
+
+            // Wall Cabinets
+            const cabinet = createMesh(new THREE.BoxGeometry(2, 1.5, 1), materials.wood);
+            cabinet.position.set(3.5, 3.5, -4.5);
+            const cabDoorL = createMesh(new THREE.BoxGeometry(0.95, 1.4, 0.05), materials.wood);
+            cabDoorL.position.set(-0.5, 0, 0.52);
+            const cabDoorR = createMesh(new THREE.BoxGeometry(0.95, 1.4, 0.05), materials.wood);
+            cabDoorR.position.set(0.5, 0, 0.52);
+            const hL = createMesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), materials.handle); hL.position.set(0.3, 0, 0.05);
+            const hR = createMesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), materials.handle); hR.position.set(-0.3, 0, 0.05);
+            cabDoorL.add(hL); cabDoorR.add(hR);
+            cabinet.add(cabDoorL); cabinet.add(cabDoorR);
+            group.add(cabinet);
+            props['cabinet'] = { mesh: cabinet, type: 'displacement' };
+
+            // NEW WALL SHELVES (Right Wall)
+            const kShelfGroup = new THREE.Group();
+            for(let i=0; i<2; i++) {
+                const shelf = createMesh(new THREE.BoxGeometry(0.5, 0.05, 2), materials.wood);
+                shelf.position.set(0, i * 0.8, 0);
+                kShelfGroup.add(shelf);
+                
+                // Add jar
+                const jar = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.25), materials.glass);
+                jar.position.set(0, i*0.8 + 0.15, -0.5);
+                kShelfGroup.add(jar);
+            }
+            kShelfGroup.position.set(4.7, 3, 0);
+            group.add(kShelfGroup);
+            props['kitchen_shelves'] = { mesh: kShelfGroup, type: 'missing' };
+
+            // Fridge with Handle
+            const fridgeGroup = new THREE.Group();
+            fridgeGroup.position.set(-4.25, 1.75, -4.25);
+            
+            const fridgeBody = createMesh(new THREE.BoxGeometry(1.5, 3.5, 1.4), materials.white);
+            fridgeGroup.add(fridgeBody);
+
+            const fridgeDoor = createMesh(new THREE.BoxGeometry(1.5, 3.5, 0.1), materials.white);
+            fridgeDoor.position.set(0, 0, 0.75); 
+            // Handle
+            const fHandle = createMesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), materials.handle);
+            fHandle.position.set(-0.6, 0.2, 0.1);
+            fridgeDoor.add(fHandle);
+            // Freezer Line
+            const fLine = createMesh(new THREE.BoxGeometry(1.4, 0.02, 0.01), materials.black);
+            fLine.position.set(0, 0.5, 0.06);
+            fridgeDoor.add(fLine);
+
+            const doorPivot = new THREE.Group();
+            doorPivot.position.set(0.75, 0, 0.75); 
+            fridgeDoor.position.set(-0.75, 0, 0); 
+            doorPivot.add(fridgeDoor);
+            fridgeGroup.add(doorPivot);
+
+            group.add(fridgeGroup);
+            props['fridge'] = { mesh: fridgeGroup, type: 'displacement', pivot: doorPivot };
+
+            // Microwave (HIGH DETAIL)
+            const microGroup = new THREE.Group();
+            const mBody = createMesh(new THREE.BoxGeometry(1, 0.6, 0.8), materials.reflectiveMetal);
+            const mWindow = createMesh(new THREE.PlaneGeometry(0.6, 0.4), materials.black);
+            mWindow.position.set(-0.15, 0.05, 0.41);
+            const mControlPanel = createMesh(new THREE.BoxGeometry(0.25, 0.55, 0.02), materials.black);
+            mControlPanel.position.set(0.35, 0, 0.41);
+            
+            // Digital Display
+            const mDisplay = createMesh(new THREE.BoxGeometry(0.2, 0.15, 0.01), materials.greenLight);
+            mDisplay.position.set(0, 0.15, 0.02);
+            mControlPanel.add(mDisplay);
+
+            // Handle
+            const mHandle = createMesh(new THREE.BoxGeometry(0.02, 0.3, 0.05), materials.handle);
+            mHandle.position.set(0.18, 0.05, 0.43);
+
+            // Feet
+            const f1 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05), materials.black); f1.position.set(-0.4, -0.32, 0.3);
+            const f2 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05), materials.black); f2.position.set(0.4, -0.32, 0.3);
+            
+            microGroup.add(mBody); microGroup.add(mWindow); microGroup.add(mControlPanel); microGroup.add(mHandle);
+            microGroup.add(f1); microGroup.add(f2);
+
+            microGroup.position.set(0.2, 1.35, -4.25);
+            group.add(microGroup);
+            props['microwave'] = { mesh: microGroup, type: 'displacement' };
+
+            // Toaster
+            const toaster = createMesh(new THREE.BoxGeometry(0.6, 0.4, 0.4), materials.reflectiveMetal);
+            // Slots
+            const tSlot1 = createMesh(new THREE.BoxGeometry(0.4, 0.02, 0.1), materials.black); tSlot1.position.set(0, 0.21, -0.1);
+            const tSlot2 = createMesh(new THREE.BoxGeometry(0.4, 0.02, 0.1), materials.black); tSlot2.position.set(0, 0.21, 0.1);
+            toaster.add(tSlot1); toaster.add(tSlot2);
+            toaster.position.set(3.2, 1.2, -4.25);
+            group.add(toaster);
+            props['toaster'] = { mesh: toaster, type: 'missing' };
+
+            // Pot
+            const potGroup = new THREE.Group();
+            const potBody = createMesh(new THREE.CylinderGeometry(0.3, 0.25, 0.3, 12), materials.reflectiveMetal);
+            const potHandle1 = createMesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), materials.black); potHandle1.position.set(-0.3, 0, 0);
+            const potHandle2 = createMesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), materials.black); potHandle2.position.set(0.3, 0, 0);
+            potGroup.add(potBody); potGroup.add(potHandle1); potGroup.add(potHandle2);
+            potGroup.position.set(-1.5, 1.25, -4.25); // On Stove
+            group.add(potGroup);
+            props['pot'] = { mesh: potGroup, type: 'missing' };
+
+            // Mug (Detailed with handle)
+            const mugGroup = new THREE.Group();
+            const mugBody = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8), materials.white);
+            const mugHandle = createMesh(new THREE.TorusGeometry(0.08, 0.02, 4, 8, Math.PI), materials.white);
+            mugHandle.rotation.z = -Math.PI/2;
+            mugHandle.position.set(0.1, 0, 0);
+            mugGroup.add(mugBody); mugGroup.add(mugHandle);
+            mugGroup.position.set(-0.5, 1.1, 0);
+            group.add(mugGroup);
+            props['mug'] = { mesh: mugGroup, type: 'missing' };
+
+            return { 
+                id: 'KITCHEN', 
+                group, 
+                light, 
+                props, 
+                hasWindow: true,
+                camPos: { x: index * 20 - 3, y: 4, z: 3 }, 
+                lookAt: { x: index * 20 + 1, y: 1, z: -2 },
+                intruderPos: new THREE.Vector3(2.5, 0, 0), // MOVED TO RIGHT SIDE, CLEARLY VISIBLE
+                windowIntruderPos: new THREE.Vector3(0, 2.5, -6)
+            };
+        }
+
+        function buildStorage(index) {
+            const { group, light } = createRoomBase(index * 20, false);
+            light.intensity = 0.5;
+            const props = {};
+
+            // HIGH DETAIL SHELVES
+            for(let i=0; i<3; i++) {
+                const shelfGroup = new THREE.Group();
+                // 4 Legs
+                const legGeo = new THREE.BoxGeometry(0.1, 4, 0.1);
+                const positions = [[-0.9, 0, -0.4], [0.9, 0, -0.4], [-0.9, 0, 0.4], [0.9, 0, 0.4]];
+                positions.forEach(pos => {
+                    const leg = createMesh(legGeo, materials.metal);
+                    leg.position.set(pos[0], 2, pos[1]);
+                    shelfGroup.add(leg);
+                });
+                // 4 Levels
+                const shelfGeo = new THREE.BoxGeometry(2, 0.05, 1);
+                for(let j=1; j<=4; j++) {
+                    const shelf = createMesh(shelfGeo, materials.metal);
+                    shelf.position.y = j * 0.9;
+                    shelfGroup.add(shelf);
+
+                    // NEW: Add random boxes on shelves
+                    if (Math.random() > 0.3) {
+                        const box = createMesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), materials.wood);
+                        box.position.set((Math.random()-0.5), j*0.9 + 0.25, 0);
+                        box.rotation.y = Math.random() * 0.5;
+                        shelfGroup.add(box);
+                    }
+                }
+                shelfGroup.position.set(-3 + (i*2.5), 0, -4.5);
+                group.add(shelfGroup);
+            }
+
+            // Toolbox
+            const toolbox = createMesh(new THREE.BoxGeometry(0.8, 0.4, 0.4), materials.redPaint); 
+            toolbox.position.set(-3, 3.8, -4.5); // Adjusted height for new shelf
+            group.add(toolbox);
+            props['toolbox'] = { mesh: toolbox, type: 'missing' };
+
+            // Box
+            const box = createMesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), materials.wood);
+            box.position.set(0, 0.4, 0);
+            group.add(box);
+            props['box'] = { mesh: box, type: 'displacement' };
+
+            // Extra Object: Box
+            const extraBox = createMesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), materials.wood);
+            extraBox.position.set(4, 0.4, -2);
+            extraBox.visible = false;
+            group.add(extraBox);
+            props['extra'] = { mesh: extraBox, type: 'extra' };
+
+            // DETAILED PALLET
+            const palletGroup = new THREE.Group();
+            // Bottom runners
+            const r1 = createMesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), materials.wood); r1.position.z = -0.6;
+            const r2 = createMesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), materials.wood); r2.position.z = 0;
+            const r3 = createMesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), materials.wood); r3.position.z = 0.6;
+            palletGroup.add(r1); palletGroup.add(r2); palletGroup.add(r3);
+            // Top Slats
+            for(let k=0; k<6; k++) {
+                const slat = createMesh(new THREE.BoxGeometry(0.2, 0.05, 1.5), materials.wood);
+                slat.position.set(-0.6 + (k*0.24), 0.1, 0);
+                palletGroup.add(slat);
+            }
+            
+            const pBox1 = createMesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), materials.wood);
+            pBox1.position.set(-0.3, 0.45, 0);
+            const pBox2 = createMesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), materials.wood);
+            pBox2.position.set(0.3, 0.45, 0.2);
+            palletGroup.add(pBox1);
+            palletGroup.add(pBox2);
+            
+            palletGroup.position.set(-1, 0.05, -1); 
+            group.add(palletGroup);
+            props['pallet'] = { mesh: palletGroup, type: 'displacement' };
+
+            // DETAILED BARREL
+            const barrelGroup = new THREE.Group();
+            const bCyl = createMesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16), materials.fabric); // Blue plastic style
+            const bRing1 = createMesh(new THREE.TorusGeometry(0.51, 0.03, 4, 16), materials.black);
+            bRing1.rotation.x = Math.PI/2; bRing1.position.y = 0.4;
+            const bRing2 = createMesh(new THREE.TorusGeometry(0.51, 0.03, 4, 16), materials.black);
+            bRing2.rotation.x = Math.PI/2; bRing2.position.y = -0.4;
+            barrelGroup.add(bCyl); barrelGroup.add(bRing1); barrelGroup.add(bRing2);
+            
+            barrelGroup.position.set(2, 0.75, 2);
+            group.add(barrelGroup);
+            props['barrel'] = { mesh: barrelGroup, type: 'missing' };
+
+            // Ventilation Pipe
+            const pipe = createMesh(new THREE.CylinderGeometry(0.5, 0.5, 10, 8), materials.metal); 
+            pipe.rotation.z = Math.PI / 2;
+            pipe.position.set(0, 5.5, -2);
+            group.add(pipe);
+            props['pipe'] = { mesh: pipe, type: 'missing' };
+
+            // Locker
+            const locker = createMesh(new THREE.BoxGeometry(1.5, 3.5, 1.2), materials.metal);
+            locker.position.set(4, 1.75, -2.5); 
+            group.add(locker);
+            props['locker'] = { mesh: locker, type: 'displacement' };
+
+            // Gas Canisters
+            const canisterGroup = new THREE.Group();
+            const c1 = createMesh(new THREE.CylinderGeometry(0.3, 0.3, 1.2), materials.redPaint);
+            c1.position.set(-0.3, 0.6, 0);
+            const c2 = createMesh(new THREE.CylinderGeometry(0.3, 0.3, 1.2), materials.redPaint);
+            c2.position.set(0.3, 0.6, 0);
+            canisterGroup.add(c1); canisterGroup.add(c2);
+            canisterGroup.position.set(0, 0, -2); 
+            group.add(canisterGroup);
+            props['canisters'] = { mesh: canisterGroup, type: 'displacement' };
+
+            // Tires (With Rims)
+            const tireGroup = new THREE.Group();
+            for(let i=0; i<3; i++) {
+                const tG = new THREE.Group();
+                const tire = createMesh(new THREE.CylinderGeometry(0.6, 0.6, 0.3, 16), materials.black);
+                const rim = createMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.31, 8), materials.metal);
+                tG.add(tire); tG.add(rim);
+                tG.position.y = 0.15 + (i * 0.35);
+                tireGroup.add(tG);
+            }
+            tireGroup.position.set(3.5, 0, -1); 
+            group.add(tireGroup);
+            props['tires'] = { mesh: tireGroup, type: 'missing' };
+
+            return { 
+                id: 'STORAGE', 
+                group, 
+                light, 
+                props, 
+                hasWindow: false,
+                camPos: { x: index * 20, y: 4.0, z: 4 },
+                lookAt: { x: index * 20, y: 1, z: -4 },
+                intruderPos: new THREE.Vector3(2, 0, 1),
+                windowIntruderPos: null
+            };
+        }
+
+        function buildOffice(index) {
+            const { group, light } = createRoomBase(index * 20, true);
+            const props = {};
+
+            // DETAILED Desk
+            const deskGroup = new THREE.Group();
+            const deskTop = createMesh(new THREE.BoxGeometry(3.5, 0.1, 1.8), materials.wood);
+            deskTop.position.y = 1.2;
+            const deskLeft = createMesh(new THREE.BoxGeometry(0.8, 1.2, 1.6), materials.wood);
+            deskLeft.position.set(-1.2, 0.6, 0);
+            const deskRight = createMesh(new THREE.BoxGeometry(0.8, 1.2, 1.6), materials.wood);
+            deskRight.position.set(1.2, 0.6, 0);
+            const backPanel = createMesh(new THREE.BoxGeometry(1.6, 0.8, 0.1), materials.wood);
+            backPanel.position.set(0, 0.8, -0.7);
+            
+            // Drawers handles
+            const h1 = createMesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), materials.handle); h1.position.set(-1.2, 0.9, 0.8);
+            const h2 = createMesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), materials.handle); h2.position.set(-1.2, 0.5, 0.8);
+            const h3 = createMesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), materials.handle); h3.position.set(1.2, 0.9, 0.8);
+            
+            deskGroup.add(deskTop); deskGroup.add(deskLeft); deskGroup.add(deskRight); deskGroup.add(backPanel);
+            deskGroup.add(h1); deskGroup.add(h2); deskGroup.add(h3);
+
+            // PEN CUP
+            const cup = createMesh(new THREE.CylinderGeometry(0.1, 0.08, 0.2), materials.black);
+            cup.position.set(1.2, 1.35, -0.2);
+            const pen1 = createMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3), materials.redPaint);
+            pen1.position.set(1.22, 1.4, -0.22); pen1.rotation.x = 0.2;
+            const pen2 = createMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3), materials.white);
+            pen2.position.set(1.18, 1.4, -0.18); pen2.rotation.z = -0.2;
+            deskGroup.add(cup); deskGroup.add(pen1); deskGroup.add(pen2);
+
+            deskGroup.position.set(0, 0, -1);
+            group.add(deskGroup);
+
+            // WALL CLOCK (Right wall, avoiding window)
+            const clockGroup = new THREE.Group();
+            const cFace = createMesh(new THREE.CylinderGeometry(0.4, 0.4, 0.05, 16), materials.white);
+            cFace.rotation.z = Math.PI/2;
+            const cRim = createMesh(new THREE.TorusGeometry(0.4, 0.02, 4, 16), materials.black);
+            cRim.rotation.z = Math.PI/2;
+            const hand1 = createMesh(new THREE.BoxGeometry(0.02, 0.3, 0.02), materials.black);
+            hand1.position.x = 0.03;
+            const hand2 = createMesh(new THREE.BoxGeometry(0.02, 0.2, 0.02), materials.black);
+            hand2.position.x = 0.03; hand2.rotation.x = Math.PI/2;
+            clockGroup.add(cFace); clockGroup.add(cRim); clockGroup.add(hand1); clockGroup.add(hand2);
+            clockGroup.position.set(4.9, 3.5, -2);
+            group.add(clockGroup);
+            props['clock'] = { mesh: clockGroup, type: 'missing' };
+
+            // Paper Stack
+            const paper = createMesh(new THREE.BoxGeometry(0.4, 0.2, 0.5), materials.white);
+            paper.position.set(-1, 1.3, -1);
+            group.add(paper);
+            props['paper'] = { mesh: paper, type: 'missing' };
+
+            // Extra Object: Mug
+            const mugGroup = new THREE.Group();
+            const mugBody = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2), materials.white);
+            const mugHandle = createMesh(new THREE.TorusGeometry(0.08, 0.02, 4, 8, Math.PI), materials.white);
+            mugHandle.rotation.z = -Math.PI/2;
+            mugHandle.position.set(0.1, 0, 0);
+            mugGroup.add(mugBody); mugGroup.add(mugHandle);
+            mugGroup.position.set(1, 1.35, -0.5);
+            mugGroup.visible = false;
+            group.add(mugGroup);
+            props['extra'] = { mesh: mugGroup, type: 'extra' };
+
+            // DETAILED Office Chair
+            const chairGroup = new THREE.Group();
+            // Wheels/Star Base
+            const baseCenter = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2), materials.black);
+            baseCenter.position.y = 0.1;
+            for(let i=0; i<5; i++) {
+                const leg = createMesh(new THREE.BoxGeometry(0.05, 0.05, 0.6), materials.black);
+                leg.rotation.y = i * (Math.PI * 2 / 5);
+                leg.position.y = 0.1;
+                chairGroup.add(leg);
+            }
+            // Gas Lift
+            const lift = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), materials.metal);
+            lift.position.y = 0.35;
+            // Seat
+            const seat = createMesh(new THREE.BoxGeometry(1, 0.1, 1), materials.fabric);
+            seat.position.y = 0.6;
+            // Back
+            const backSupport = createMesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), materials.black);
+            backSupport.position.set(0, 0.9, 0.5);
+            const back = createMesh(new THREE.BoxGeometry(1, 1.2, 0.1), materials.fabric);
+            back.position.set(0, 1.2, 0.45);
+            
+            chairGroup.add(baseCenter); chairGroup.add(lift); chairGroup.add(seat); chairGroup.add(backSupport); chairGroup.add(back);
+            chairGroup.position.set(0, 0, 1);
+            chairGroup.rotation.y = Math.PI;
+            group.add(chairGroup);
+            props['chair'] = { mesh: chairGroup, type: 'displacement' };
+
+            // Laptop (Complex - Base + Lid + Keys)
+            const laptopGroup = new THREE.Group();
+            laptopGroup.position.set(0.5, 1.25, -1);
+            
+            const lBase = createMesh(new THREE.BoxGeometry(0.8, 0.05, 0.6), materials.black);
+            // Keyboard texture illusion (grey patch)
+            const keyboard = createMesh(new THREE.PlaneGeometry(0.7, 0.3), materials.wall); // Greyish
+            keyboard.rotation.x = -Math.PI/2; keyboard.position.y = 0.03; keyboard.position.z = -0.1;
+            lBase.add(keyboard);
+            laptopGroup.add(lBase);
+
+            const lidPivot = new THREE.Group();
+            lidPivot.position.set(0, 0.025, -0.3); // Hinge at back
+            
+            const lLid = createMesh(new THREE.BoxGeometry(0.8, 0.05, 0.6), materials.black);
+            lLid.position.set(0, 0, 0.3); // Offset geometry so pivot is at edge
+            
+            // Screen Mesh
+            const lScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.5), materials.black); // Screen is black by default
+            lScreen.position.set(0, 0.03, 0.3);
+            lScreen.rotation.x = -Math.PI / 2;
+            lidPivot.add(lLid);
+            lidPivot.add(lScreen);
+            
+            laptopGroup.add(lidPivot);
+            group.add(laptopGroup);
+            
+            props['laptop'] = { mesh: laptopGroup, type: 'malfunction', pivot: lidPivot, screen: lScreen };
+
+            // Filing Cabinets (Detailed)
+            const cabGroup = new THREE.Group();
+            const cabBody = createMesh(new THREE.BoxGeometry(1.2, 2.5, 1.2), materials.metal);
+            cabBody.position.y = 1.25;
+            cabGroup.add(cabBody);
+            // 4 Drawers
+            for(let i=0; i<4; i++) {
+                const drawer = createMesh(new THREE.BoxGeometry(1.1, 0.55, 0.05), materials.metal);
+                drawer.position.set(0, 0.35 + (i*0.6), 0.6);
+                const handle = createMesh(new THREE.BoxGeometry(0.3, 0.05, 0.05), materials.handle);
+                handle.position.set(0, 0, 0.05);
+                drawer.add(handle);
+                cabGroup.add(drawer);
+            }
+            cabGroup.position.set(-4.4, 0, -4.4);
+            group.add(cabGroup);
+            props['cabinet_tall'] = { mesh: cabGroup, type: 'displacement' };
+
+            const cab2Group = new THREE.Group();
+            const cab2Body = createMesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), materials.metal);
+            cab2Body.position.y = 0.6;
+            cab2Group.add(cab2Body);
+            for(let i=0; i<2; i++) {
+                const drawer = createMesh(new THREE.BoxGeometry(1.1, 0.5, 0.05), materials.metal);
+                drawer.position.set(0, 0.3 + (i*0.6), 0.6);
+                const handle = createMesh(new THREE.BoxGeometry(0.3, 0.05, 0.05), materials.handle);
+                handle.position.set(0, 0, 0.05);
+                drawer.add(handle);
+                cab2Group.add(drawer);
+            }
+            cab2Group.position.set(-3, 0, -4.4);
+            group.add(cab2Group);
+            props['cabinet_short'] = { mesh: cab2Group, type: 'missing' };
+
+            // FULLY DETAILED BOOKSHELF
+            const shelfGroup = new THREE.Group();
+            
+            // Sides
+            const sideL = createMesh(new THREE.BoxGeometry(0.1, 3.5, 0.8), materials.wood); sideL.position.set(-1, 1.75, 0);
+            const sideR = createMesh(new THREE.BoxGeometry(0.1, 3.5, 0.8), materials.wood); sideR.position.set(1, 1.75, 0);
+            const top = createMesh(new THREE.BoxGeometry(2.1, 0.1, 0.8), materials.wood); top.position.set(0, 3.55, 0);
+            shelfGroup.add(sideL); shelfGroup.add(sideR); shelfGroup.add(top);
+
+            // Shelves & Books
+            for(let i=1; i<4; i++) {
+                const s = createMesh(new THREE.BoxGeometry(2, 0.05, 0.8), materials.wood);
+                s.position.y = i * 0.85;
+                shelfGroup.add(s);
+                
+                // Add books
+                for(let b=0; b<6; b++) {
+                    // Random book colors
+                    const mats = [materials.redPaint, materials.fabric, materials.plantGreen, materials.black];
+                    const randMat = mats[Math.floor(Math.random()*mats.length)];
+                    const book = createMesh(new THREE.BoxGeometry(0.1 + Math.random()*0.1, 0.4 + Math.random()*0.2, 0.6), randMat);
+                    book.position.set(-0.8 + (b*0.3), i*0.85 + 0.25, 0);
+                    shelfGroup.add(book);
+                }
+            }
+            
+            shelfGroup.position.set(4.25, 0, -2);
+            shelfGroup.rotation.y = -Math.PI / 2;
+            group.add(shelfGroup);
+            props['bookshelf'] = { mesh: shelfGroup, type: 'displacement' };
+
+            // Whiteboard (MOVED TO RIGHT SIDE, NOT INSIDE WALL OR WINDOW)
+            const boardGroup = new THREE.Group();
+            const board = createMesh(new THREE.BoxGeometry(0.1, 2, 3), materials.white);
+            const frame = createMesh(new THREE.BoxGeometry(0.15, 2.1, 3.1), materials.metal);
+            const tray = createMesh(new THREE.BoxGeometry(0.2, 0.1, 3), materials.metal);
+            tray.position.set(0.1, -1, 0);
+            // Marker
+            const marker = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), materials.black);
+            marker.rotation.z = Math.PI/2;
+            marker.position.set(0.15, -0.9, -1);
+            boardGroup.add(frame); boardGroup.add(board); boardGroup.add(tray); boardGroup.add(marker);
+            
+            boardGroup.position.set(3.5, 3, -4.7); // x=3.5 (Right of window), z=-4.7 (Flush on wall surface)
+            boardGroup.rotation.y = Math.PI / 2;
+            group.add(boardGroup);
+            props['whiteboard'] = { mesh: boardGroup, type: 'missing' };
+
+            return { 
+                id: 'OFFICE', 
+                group, 
+                light, 
+                props, 
+                hasWindow: true,
+                camPos: { x: index * 20 - 3, y: 5, z: 3 }, 
+                lookAt: { x: index * 20 + 1, y: 1.5, z: -2 },
+                intruderPos: new THREE.Vector3(2, 0, 2),
+                windowIntruderPos: new THREE.Vector3(0, 2.5, -6)
+            };
+        }
+
+        function buildCorridor(index) {
+            const { group, light } = createRoomBase(index * 20, true);
+            const props = {};
+
+            // --- REARRANGED CORRIDOR LAYOUT ---
+
+            // 1. Vending Machine (Back Left Corner)
+            const vending = new THREE.Group();
+            const vBody = createMesh(new THREE.BoxGeometry(2, 3.8, 1.5), materials.metal);
+            vBody.position.y = 1.9;
+            const vWindow = createMesh(new THREE.BoxGeometry(1.5, 2.5, 0.1), materials.glass, false);
+            vWindow.position.set(0.1, 2.3, 0.76); // Adjusted window offset
+            const vPanel = createMesh(new THREE.BoxGeometry(0.4, 3.8, 0.1), materials.black);
+            vPanel.position.set(-0.8, 1.9, 0.76); // Panel on left
+            // Buttons
+            for(let i=0; i<4; i++) {
+                const btn = createMesh(new THREE.BoxGeometry(0.2, 0.1, 0.05), materials.white);
+                btn.position.set(-0.8, 2.5 - (i*0.2), 0.82);
+                vending.add(btn);
+            }
+            // Dispense Slot
+            const vSlot = createMesh(new THREE.BoxGeometry(1.5, 0.5, 0.1), materials.black);
+            vSlot.position.set(0.1, 0.5, 0.76);
+            
+            vending.add(vBody); vending.add(vWindow); vending.add(vPanel); vending.add(vSlot);
+            vending.position.set(-3.5, 0, -4.0); // Back Left
+            vending.rotation.y = Math.PI / 6; // Angled slightly towards center
+            group.add(vending);
+            props['vending'] = { mesh: vending, type: 'malfunction' };
+
+            // 2. Water Cooler (Left Wall, Mid-Front)
+            const coolerGroup = new THREE.Group();
+            const cBase = createMesh(new THREE.BoxGeometry(0.8, 1.5, 0.8), materials.white);
+            cBase.position.y = 0.75;
+            const cBottle = createMesh(new THREE.CylinderGeometry(0.35, 0.35, 0.8), materials.glass); 
+            cBottle.position.y = 1.9;
+            // Taps
+            const tap1 = createMesh(new THREE.BoxGeometry(0.05, 0.1, 0.1), materials.redPaint); tap1.position.set(-0.15, 1.1, 0.45);
+            const tap2 = createMesh(new THREE.BoxGeometry(0.05, 0.1, 0.1), materials.glass); tap2.position.set(0.15, 1.1, 0.45); 
+            const tray = createMesh(new THREE.BoxGeometry(0.6, 0.05, 0.2), materials.black); tray.position.set(0, 0.9, 0.5);
+            
+            coolerGroup.add(cBase); coolerGroup.add(cBottle); coolerGroup.add(tap1); coolerGroup.add(tap2); coolerGroup.add(tray);
+            coolerGroup.position.set(-4.0, 0, 1.0); // Left Wall
+            coolerGroup.rotation.y = Math.PI / 4; // Angled out
+            group.add(coolerGroup);
+            props['water_cooler'] = { mesh: coolerGroup, type: 'displacement' };
+
+            // 3. Trash Can (Left Wall, between Vending and Cooler)
+            const trash = createMesh(new THREE.CylinderGeometry(0.5, 0.4, 1.2, 8), materials.metal);
+            const trashRim = createMesh(new THREE.TorusGeometry(0.5, 0.05, 4, 8), materials.metal);
+            trashRim.rotation.x = Math.PI/2; trashRim.position.y = 0.6;
+            trash.add(trashRim);
+            trash.position.set(-3.8, 0.6, -1.5); 
+            group.add(trash);
+            props['trash'] = { mesh: trash, type: 'displacement' };
+
+            // 4. Bench (Right Wall, stretching back)
+            const benchGroup = new THREE.Group();
+            // Metal frame
+            const legL = createMesh(new THREE.BoxGeometry(0.1, 0.5, 1), materials.metal); legL.position.set(-1.4, 0.25, 0);
+            const legR = createMesh(new THREE.BoxGeometry(0.1, 0.5, 1), materials.metal); legR.position.set(1.4, 0.25, 0);
+            // Wood Slats
+            for(let i=0; i<3; i++) {
+                const slat = createMesh(new THREE.BoxGeometry(3, 0.1, 0.25), materials.wood);
+                slat.position.set(0, 0.55, -0.35 + (i*0.35));
+                benchGroup.add(slat);
+            }
+            benchGroup.add(legL); benchGroup.add(legR);
+            benchGroup.position.set(3.8, 0, -2.0); 
+            benchGroup.rotation.y = -Math.PI / 16; // Slight angle
+            group.add(benchGroup);
+            props['bench'] = { mesh: benchGroup, type: 'displacement' };
+
+            // 5. Fire Extinguisher (Right Wall, Near Camera)
+            const extGroup = new THREE.Group();
+            const tank = createMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.8, 8), materials.redPaint);
+            const neck = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2), materials.metal); neck.position.y = 0.5;
+            const handle1 = createMesh(new THREE.BoxGeometry(0.2, 0.02, 0.05), materials.black); handle1.position.set(0.1, 0.55, 0);
+            const handle2 = createMesh(new THREE.BoxGeometry(0.2, 0.02, 0.05), materials.black); handle2.position.set(0.1, 0.6, 0);
+            const hose = createMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.6), materials.black); hose.position.set(-0.15, 0.3, 0); hose.rotation.z = 0.2;
+            extGroup.add(tank); extGroup.add(neck); extGroup.add(handle1); extGroup.add(handle2); extGroup.add(hose);
+            
+            extGroup.position.set(4.8, 2.0, 3.0); // High on right wall, front
+            extGroup.rotation.y = -Math.PI / 2; // Facing room
+            group.add(extGroup);
+            props['extinguisher'] = { mesh: extGroup, type: 'missing' };
+
+            // 6. Poster (Right Wall, Far Back)
+            const poster = createMesh(new THREE.BoxGeometry(0.05, 2, 1.5), materials.white);
+            poster.position.set(4.9, 3, -3.5); 
+            group.add(poster);
+            props['poster'] = { mesh: poster, type: 'missing' };
+
+            // 7. Notice Board (Left Wall, Middle)
+            const noticeBoard = createMesh(new THREE.BoxGeometry(0.1, 1.5, 2.5), materials.wood);
+            noticeBoard.position.set(-4.9, 3, 0);
+            group.add(noticeBoard);
+            props['notice_board'] = { mesh: noticeBoard, type: 'missing' };
+
+            // 8. Wet Floor Sign (Center Path)
+            const signGroup = new THREE.Group();
+            const s1 = createMesh(new THREE.BoxGeometry(0.6, 1, 0.05), materials.redLight);
+            s1.rotation.x = -0.2; s1.position.z = -0.15;
+            const s2 = createMesh(new THREE.BoxGeometry(0.6, 1, 0.05), materials.redLight);
+            s2.rotation.x = 0.2; s2.position.z = 0.15;
+            signGroup.add(s1); signGroup.add(s2);
+            signGroup.position.set(0.5, 0.5, 1.5); // Center-right front
+            signGroup.rotation.y = -Math.PI / 6;
+            group.add(signGroup);
+            props['sign'] = { mesh: signGroup, type: 'missing' };
+
+            // 9. Cardboard Box (Near Vending)
+            const cBox = createMesh(new THREE.BoxGeometry(0.7, 0.5, 0.7), materials.wood);
+            cBox.position.set(-2.0, 0.25, -3.0); 
+            cBox.rotation.y = Math.PI / 3;
+            group.add(cBox);
+            props['cardboard_box'] = { mesh: cBox, type: 'displacement' };
+
+            // 10. Exit Sign (Ceiling, Far Back)
+            const exitSign = new THREE.Group();
+            const sSupport1 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), materials.metal);
+            sSupport1.position.set(-0.5, 5.75, 0);
+            const sSupport2 = createMesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), materials.metal);
+            sSupport2.position.set(0.5, 5.75, 0);
+            
+            const exitTexture = createTextTexture("EXIT", "#ffffff", "#ff0000");
+            const exitMat = new THREE.MeshStandardMaterial({ map: exitTexture });
+            const sBox = createMesh(new THREE.BoxGeometry(1.5, 0.6, 0.2), exitMat); 
+
+            sBox.position.set(0, 5.3, 0);
+            exitSign.add(sSupport1); exitSign.add(sSupport2); exitSign.add(sBox);
+            exitSign.position.set(0, 0, -4.5); // Way back above door area
+            group.add(exitSign);
+            props['exit_sign'] = { mesh: exitSign, type: 'malfunction' };
+
+            // 11. Extra Object: Trash Bag (Near Trash Can)
+            const trashBag = createMesh(new THREE.SphereGeometry(0.6), materials.black);
+            trashBag.position.set(-3.0, 0.5, -0.5);
+            trashBag.visible = false;
+            group.add(trashBag);
+            props['extra'] = { mesh: trashBag, type: 'extra' };
+
+            return { 
+                id: 'CORRIDOR', 
+                group, 
+                light, 
+                props, 
+                hasWindow: true,
+                camPos: { x: index * 20, y: 5, z: 8 }, 
+                lookAt: { x: index * 20, y: 1.5, z: -6 }, 
+                intruderPos: new THREE.Vector3(0, 0, -1),
+                windowIntruderPos: new THREE.Vector3(0, 2.5, -6)
+            };
+        }
+
+        function buildBasement(index) {
+            // Base structure
+            const { group, light } = createRoomBase(index * 20, false);
+            light.intensity = 0.2; // Very dim
+            light.color.setHex(0xaaaaff); // Cold, dim light
+            const props = {};
+
+            // === UPDATED BASEMENT DETAILS ===
+
+            // 1. Wooden Support Beams
+            const beamGeo = new THREE.BoxGeometry(0.4, 6, 0.4);
+            const beam1 = createMesh(beamGeo, materials.wood); beam1.position.set(-2.5, 3, 2);
+            const beam2 = createMesh(beamGeo, materials.wood); beam2.position.set(2.5, 3, 2);
+            const beam3 = createMesh(beamGeo, materials.wood); beam3.position.set(-2.5, 3, -2);
+            const beam4 = createMesh(beamGeo, materials.wood); beam4.position.set(2.5, 3, -2);
+            group.add(beam1); group.add(beam2); group.add(beam3); group.add(beam4);
+
+            // 2. Rusty Furnace (Replacing simple boiler)
+            const furnaceGroup = new THREE.Group();
+            const fMain = createMesh(new THREE.BoxGeometry(2, 3, 2), materials.rust);
+            fMain.position.y = 1.5;
+            const fDoor = createMesh(new THREE.BoxGeometry(1.2, 1, 0.1), materials.black);
+            fDoor.position.set(0, 1, 1.05);
+            // Grate
+            const fGrate = createMesh(new THREE.BoxGeometry(1, 0.8, 0.05), materials.metal);
+            fGrate.position.set(0, 1, 1.1);
+            // Smokestack
+            const fStack = createMesh(new THREE.CylinderGeometry(0.3, 0.3, 3, 16), materials.rust);
+            fStack.position.set(0, 4, 0);
+            
+            furnaceGroup.add(fMain); furnaceGroup.add(fDoor); furnaceGroup.add(fGrate); furnaceGroup.add(fStack);
+            furnaceGroup.position.set(-3, 0, -3);
+            group.add(furnaceGroup);
+            props['furnace'] = { mesh: furnaceGroup, type: 'displacement' };
+
+            // 3. Workbench
+            const benchGroup = new THREE.Group();
+            const bTop = createMesh(new THREE.BoxGeometry(3, 0.1, 1), materials.wood);
+            bTop.position.y = 1.2;
+            const bLeg1 = createMesh(new THREE.BoxGeometry(0.1, 1.2, 0.8), materials.metal); bLeg1.position.set(-1.4, 0.6, 0);
+            const bLeg2 = createMesh(new THREE.BoxGeometry(0.1, 1.2, 0.8), materials.metal); bLeg2.position.set(1.4, 0.6, 0);
+            benchGroup.add(bTop); benchGroup.add(bLeg1); benchGroup.add(bLeg2);
+            
+            // Random tools on bench
+            const hammer = createMesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), materials.redPaint); hammer.position.set(0.5, 1.25, 0); hammer.rotation.y = 0.5;
+            const wrench = createMesh(new THREE.BoxGeometry(0.3, 0.05, 0.1), materials.metal); wrench.position.set(-0.5, 1.25, 0.2); wrench.rotation.y = -0.3;
+            benchGroup.add(hammer); benchGroup.add(wrench);
+
+            benchGroup.position.set(3, 0, 0);
+            benchGroup.rotation.y = -Math.PI / 2;
+            group.add(benchGroup);
+            props['workbench'] = { mesh: benchGroup, type: 'displacement' };
+
+            // 4. Detailed Pipes (Ceiling)
+            const pipeGroup = new THREE.Group();
+            const pipeMain = createMesh(new THREE.CylinderGeometry(0.2, 0.2, 10, 8), materials.metal);
+            pipeMain.rotation.z = Math.PI / 2;
+            // Branch pipe
+            const pipeBranch = createMesh(new THREE.CylinderGeometry(0.15, 0.15, 6, 8), materials.metal);
+            pipeBranch.rotation.x = Math.PI / 2;
+            pipeGroup.add(pipeMain); pipeGroup.add(pipeBranch);
+            pipeGroup.position.set(0, 5, 0);
+            group.add(pipeGroup);
+
+            // 5. Old Chair
+            const chairGroup = new THREE.Group();
+            const cSeat = createMesh(new THREE.BoxGeometry(1, 0.1, 1), materials.wood);
+            cSeat.position.y = 0.8;
+            const cBack = createMesh(new THREE.BoxGeometry(1, 1, 0.1), materials.wood);
+            cBack.position.set(0, 1.3, 0.45);
+            // 4 wood legs
+            const l1 = createMesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), materials.wood); l1.position.set(-0.4, 0.4, -0.4);
+            const l2 = createMesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), materials.wood); l2.position.set(0.4, 0.4, -0.4);
+            const l3 = createMesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), materials.wood); l3.position.set(-0.4, 0.4, 0.4);
+            const l4 = createMesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), materials.wood); l4.position.set(0.4, 0.4, 0.4);
+            
+            chairGroup.add(cSeat); chairGroup.add(cBack); 
+            chairGroup.add(l1); chairGroup.add(l2); chairGroup.add(l3); chairGroup.add(l4);
+            
+            chairGroup.position.set(4, 0, 4);
+            chairGroup.rotation.y = -Math.PI / 4; // Facing corner
+            group.add(chairGroup);
+            props['chair'] = { mesh: chairGroup, type: 'displacement' };
+
+            // 6. Floor Debris
+            const debris1 = createMesh(new THREE.BoxGeometry(0.4, 0.2, 0.3), materials.wall); debris1.position.set(-1, 0.1, 1);
+            const debris2 = createMesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), materials.rust); debris2.position.set(1.5, 0.15, -1.5);
+            group.add(debris1); group.add(debris2);
+
+            // Drain
+            const drain = createMesh(new THREE.CircleGeometry(0.5, 8), materials.metal);
+            drain.rotation.x = -Math.PI/2;
+            drain.position.set(0, 0.02, 0);
+            group.add(drain);
+            props['drain'] = { mesh: drain, type: 'missing' }; 
+
+            // Extra object: Red Ball
+            const ball = createMesh(new THREE.SphereGeometry(0.3), materials.redPaint);
+            ball.position.set(0, 0.3, 2);
+            ball.visible = false;
+            group.add(ball);
+            props['extra'] = { mesh: ball, type: 'extra' };
+
+            return {
+                id: 'BASEMENT',
+                group,
+                light,
+                props,
+                hasWindow: false,
+                camPos: { x: index * 20, y: 3, z: 3 }, // Lower camera angle
+                lookAt: { x: index * 20, y: 1, z: -3 },
+                intruderPos: new THREE.Vector3(0, 0, 0),
+                windowIntruderPos: null
+            };
+        }
+
+        function buildRealWorld() {
+            // Far away coordinates
+            const xOff = 1000;
+            const group = new THREE.Group();
+            group.position.set(xOff, 0, 0);
+
+            // Floor
+            const floor = createMesh(new THREE.PlaneGeometry(10, 10), materials.floor);
+            floor.rotation.x = -Math.PI / 2;
+            group.add(floor);
+
+            // Walls (Back and Side)
+            const backWall = createMesh(new THREE.BoxGeometry(10, 6, 0.5), materials.wall);
+            backWall.position.set(0, 3, -5);
+            group.add(backWall);
+            
+            const sideWall = createMesh(new THREE.BoxGeometry(0.5, 6, 10), materials.wall);
+            sideWall.position.set(-5, 3, 0);
+            group.add(sideWall);
+
+            // Desk
+            const desk = createMesh(new THREE.BoxGeometry(4, 1.2, 2), materials.wood);
+            desk.position.set(0, 0.6, -3);
+            group.add(desk);
+
+            // --- DESK PROPS ---
+
+            // Keyboard
+            const keyboard = createMesh(new THREE.BoxGeometry(1.2, 0.05, 0.5), materials.black);
+            keyboard.position.set(0, 1.22, -2.4); // On desk top
+            group.add(keyboard);
+
+            // Mousepad
+            const mousepad = createMesh(new THREE.BoxGeometry(0.5, 0.02, 0.6), materials.black);
+            mousepad.position.set(0.9, 1.21, -2.4);
+            group.add(mousepad);
+
+            // Mouse
+            const mouseObj = createMesh(new THREE.BoxGeometry(0.15, 0.08, 0.25), materials.wall); // Greyish
+            mouseObj.position.set(0.9, 1.25, -2.4);
+            group.add(mouseObj);
+
+            // Coffee Mug
+            const rwMug = new THREE.Group();
+            const rwMugBody = createMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8), materials.white);
+            const rwMugHandle = createMesh(new THREE.TorusGeometry(0.08, 0.02, 4, 8, Math.PI), materials.white);
+            rwMugHandle.rotation.z = -Math.PI/2;
+            rwMugHandle.position.set(0.1, 0, 0);
+            rwMug.add(rwMugBody); rwMug.add(rwMugHandle);
+            rwMug.position.set(-0.8, 1.3, -2.5);
+            rwMug.rotation.y = 1;
+            group.add(rwMug);
+
+            // Papers
+            const paper1 = createMesh(new THREE.BoxGeometry(0.4, 0.01, 0.5), materials.white);
+            paper1.position.set(-1.2, 1.21, -2.3);
+            paper1.rotation.y = 0.2;
+            group.add(paper1);
+            
+            const paper2 = createMesh(new THREE.BoxGeometry(0.4, 0.01, 0.5), materials.white);
+            paper2.position.set(-1.1, 1.22, -2.35);
+            paper2.rotation.y = -0.1;
+            group.add(paper2);
+
+            // Monitor
+            const monitorGroup = new THREE.Group();
+            const mBase = createMesh(new THREE.BoxGeometry(1.2, 0.8, 0.1), materials.black);
+            // Screen with EAS Texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 300;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "#0000AA"; ctx.fillRect(0,0,512,300);
+            ctx.fillStyle = "white"; ctx.font = "bold 30px Arial"; ctx.textAlign = "center";
+            ctx.fillText("EMERGENCY ALERT", 256, 50);
+            ctx.font = "20px Arial";
+            ctx.fillText("BIOLOGICAL THREAT DETECTED", 256, 100);
+            ctx.fillStyle = "red"; ctx.font = "bold 40px Arial";
+            ctx.fillText("HIDE NOW", 256, 180);
+            
+            const easTex = new THREE.CanvasTexture(canvas);
+            const mScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.7), new THREE.MeshBasicMaterial({ map: easTex }));
+            mScreen.position.z = 0.06;
+            
+            monitorGroup.add(mBase);
+            monitorGroup.add(mScreen);
+            monitorGroup.position.set(0, 1.6, -3);
+            group.add(monitorGroup);
+
+            // Light from monitor
+            const mLight = new THREE.PointLight(0x5555ff, 1, 5);
+            mLight.position.set(0, 1.6, -2.5);
+            group.add(mLight);
+
+            gameState.realWorldRef = {
+                group: group,
+                camPos: new THREE.Vector3(xOff, 1.6, -1), // Sitting at desk
+                hidePos: new THREE.Vector3(xOff, 0.5, -2), // Under desk
+                lookAt: new THREE.Vector3(xOff, 1.6, -3), // Look at monitor
+                easTexture: easTex,
+                screenMesh: mScreen
+            };
+
+            return group;
+        }
+
+        // --- INIT ROOMS ---
+        gameState.rooms.push(buildLivingRoom(0));
+        gameState.rooms.push(buildKitchen(1));
+        gameState.rooms.push(buildStorage(2));
+        gameState.rooms.push(buildOffice(3));
+        gameState.rooms.push(buildCorridor(4));
+        gameState.rooms.push(buildBasement(5));
+
+        gameState.rooms.forEach(r => scene.add(r.group));
+        scene.add(buildRealWorld());
+
+        // --- ANOMALY SYSTEM ---
+        
+        // Helper to clone initial transform state
+        function captureState(mesh) {
+            return {
+                pos: mesh.position.clone(),
+                rot: mesh.rotation.clone(),
+                vis: mesh.visible,
+                mat: mesh.material
+            };
+        }
+
+        // Store original states
+        gameState.rooms.forEach(room => {
+            room.originalLight = { color: room.light.color.clone(), intensity: room.light.intensity };
+            
+            // Standard Intruder
+            room.intruder = createIntruder();
+            room.intruder.position.copy(room.intruderPos);
+            room.intruder.visible = false;
+            room.group.add(room.intruder);
+
+            // Window Intruder
+            if (room.hasWindow && room.windowIntruderPos) {
+                room.windowIntruder = createWindowIntruder();
+                room.windowIntruder.position.copy(room.windowIntruderPos);
+                room.windowIntruder.visible = false;
+                room.group.add(room.windowIntruder);
+            }
+
+            Object.keys(room.props).forEach(key => {
+                const prop = room.props[key];
+                // For complex objects, store rotation of pivots if they exist
+                prop.originalState = captureState(prop.mesh);
+                if (prop.pivot) {
+                    prop.originalState.pivotRot = prop.pivot.rotation.clone();
+                }
+            });
+        });
+
+        function createIntruder() {
+            const g = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.5, 8), materials.intruderBody);
+            body.position.y = 1.25;
+            body.name = "body";
+            g.add(body);
+            
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), materials.intruderBody);
+            head.position.y = 2.5;
+            head.name = "head";
+            g.add(head);
+
+            const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.05), materials.glowingEyes);
+            eye1.position.set(-0.1, 2.55, 0.3);
+            eye1.name = "eye1";
+            g.add(eye1);
+
+            const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.05), materials.glowingEyes);
+            eye2.position.set(0.1, 2.55, 0.3);
+            eye2.name = "eye2";
+            g.add(eye2);
+            
+            return g;
+        }
+
+        function createWindowIntruder() {
+            const g = new THREE.Group();
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), materials.intruderBody);
+            g.add(head);
+
+            const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.12), materials.glowingEyes);
+            eye1.position.set(-0.2, 0.1, 0.5);
+            g.add(eye1);
+
+            const eye2 = new THREE.Mesh(new THREE.SphereGeometry(0.12), materials.glowingEyes);
+            eye2.position.set(0.2, 0.1, 0.5);
+            g.add(eye2);
+            
+            return g;
+        }
+
+        function setIntruderVariant(mesh, type, isCorridor) {
+            // Reset
+            mesh.scale.set(1, 1, 1);
+            mesh.position.y = 0; 
+            mesh.rotation.set(0, 0, 0);
+
+            // Corridor scale fix
+            if(isCorridor) {
+                mesh.scale.multiplyScalar(1.3);
+            }
+
+            if (type === 'crawler') {
+                mesh.scale.set(1, 0.5, 1);
+                mesh.position.y = 0; 
+            } else if (type === 'tall') {
+                mesh.scale.set(0.8, 1.6, 0.8);
+            }
+        }
+
+        function triggerAnomaly(forcedRoomIndex, forcedType, forcedSubType) {
+            let roomIndex = typeof forcedRoomIndex !== 'undefined' ? forcedRoomIndex : Math.floor(Math.random() * gameState.rooms.length);
+            
+            // Auto dark room selection if not forced
+            if (typeof forcedRoomIndex === 'undefined') {
+                const darkRoomIndex = gameState.rooms.findIndex(r => r.light.intensity === 0);
+                if (darkRoomIndex > -1 && Math.random() < 0.7) {
+                    roomIndex = darkRoomIndex;
+                }
+            }
+
+            const room = gameState.rooms[roomIndex];
+            const roll = Math.random();
+            let type = forcedType || '';
+            let isWindowIntruder = false;
+            let subType = ''; 
+
+            if (!type) {
+                if (room.light.intensity === 0) {
+                    type = 'intruder';
+                    isWindowIntruder = false;
+                    subType = 'standard'; 
+                } 
+                else if (roll < 0.10) {
+                    type = 'camera';
+                } else if (roll < 0.35) {
+                    type = 'intruder';
+                } else if (roll < 0.55) {
+                    type = 'malfunction';
+                } else if (roll < 0.65) {
+                    type = 'extra'; 
+                } else if (roll < 0.85) {
+                    type = 'missing';
+                } else {
+                    type = 'displacement';
+                }
+            }
+
+            // Subtype Logic & Override
+            let specificPropKey = null;
+
+            if (forcedSubType) {
+                // If it's a known non-prop subtype, use it
+                const knownSubtypes = ['standard', 'crawler', 'tall', 'face', 'red', 'off', 'blue_flicker', 'shake', 'zoom', 'tilt', 'offline', 'eas'];
+                if (knownSubtypes.includes(forcedSubType)) {
+                    subType = forcedSubType;
+                    if (type === 'intruder') isWindowIntruder = false; // Ensure we see specific intruder
+                } else {
+                    // It must be a prop key
+                    specificPropKey = forcedSubType;
+                }
+            } else {
+                // Random Generation Logic
+                if (type === 'camera') {
+                    const camRoll = Math.random();
+                    if (camRoll < 0.95) { // 95% Normal glitches
+                        if (camRoll < 0.3) subType = 'shake';
+                        else if (camRoll < 0.6) subType = 'zoom';
+                        else if (camRoll < 0.8) subType = 'tilt';
+                        else subType = 'offline';
+                    } else {
+                        subType = 'eas'; // 5% chance of EAS if camera glitch
+                    }
+                } else if (type === 'intruder') {
+                    if (room.hasWindow && Math.random() > 0.6) {
+                        isWindowIntruder = true;
+                    } else {
+                        isWindowIntruder = false;
+                        const intRoll = Math.random();
+                        if (intRoll < 0.25) subType = 'standard';
+                        else if (intRoll < 0.50) subType = 'crawler';
+                        else if (intRoll < 0.75) subType = 'tall';
+                        else subType = 'face'; 
+                    }
+                } else if (type === 'malfunction') {
+                    const malRoll = Math.random();
+                    if (malRoll < 0.33) subType = 'red';
+                    else if (malRoll < 0.66) subType = 'off';
+                    else subType = 'blue_flicker';
+                }
+            }
+
+            const existing = gameState.anomalies.find(a => a.roomIndex === roomIndex && (a.type === type));
+            if (existing) return;
+
+            const anomaly = {
+                roomIndex: roomIndex,
+                type: type,
+                isWindow: isWindowIntruder,
+                subType: subType,
+                id: Date.now()
+            };
+
+            let success = false;
+
+            if (type === 'intruder') {
+                if (isWindowIntruder && room.windowIntruder && !room.windowIntruder.visible) {
+                    room.windowIntruder.visible = true;
+                    success = true;
+                } else if (!isWindowIntruder && !room.intruder.visible) {
+                    setIntruderVariant(room.intruder, subType, room.id === 'CORRIDOR');
+                    room.intruder.position.copy(room.intruderPos);
+                    
+                    if (subType === 'face') {
+                        // FIXED FACE LOGIC: CALCULATE RELATIVE TO ROOM GROUP
+                        const camWorld = new THREE.Vector3(room.camPos.x, room.camPos.y, room.camPos.z);
+                        const lookWorld = new THREE.Vector3(room.lookAt.x, room.lookAt.y, room.lookAt.z);
+
+                        const dir = new THREE.Vector3().subVectors(lookWorld, camWorld).normalize();
+
+                        // Target World Pos for Face (2 units in front of camera)
+                        const targetWorld = camWorld.clone().add(dir.multiplyScalar(2));
+                        targetWorld.y -= 0.5; // Adjust height slightly
+
+                        // Convert to Local Space (Target - RoomGroupPos)
+                        // Room Group Pos is (room.group.position.x, 0, 0)
+                        room.intruder.position.set(
+                            targetWorld.x - room.group.position.x,
+                            targetWorld.y, // group y is 0
+                            targetWorld.z  // group z is 0
+                        );
+                    } else {
+                        if(subType === 'crawler') room.intruder.position.y = 0; 
+                    }
+                    
+                    room.intruder.visible = true;
+                    success = true;
+                }
+            } 
+            else if (type === 'malfunction') {
+                // If specific prop key provided for malfunction (like TV, Laptop)
+                let appliedProp = false;
+                
+                if (specificPropKey && room.props[specificPropKey] && room.props[specificPropKey].type === 'malfunction') {
+                    const prop = room.props[specificPropKey];
+                    const pKey = specificPropKey;
+                    
+                    if(pKey === 'vending') prop.mesh.children[1].material = materials.redLight; 
+                    else if (pKey === 'tv') {
+                        prop.mesh.material = materials.white;
+                        if(prop.glow) prop.glow.visible = true;
+                    } 
+                    else if (pKey === 'lamp') {
+                        prop.light.intensity = 1; 
+                        prop.shade.material = materials.glowingEyes; 
+                        if(prop.glow) prop.glow.visible = true;
+                    } 
+                    else if (pKey === 'laptop') {
+                        prop.pivot.rotation.x = -Math.PI / 1.5; // HYPER EXTENDED
+                        prop.screen.material = materials.whiteScreen; 
+                    }
+                    
+                    anomaly.propKey = pKey;
+                    appliedProp = true;
+                } 
+                else if (!specificPropKey) {
+                    // Random logic for malfunction if no specific prop forced
+                    const malProps = Object.keys(room.props).filter(k => room.props[k].type === 'malfunction');
+                    if (malProps.length > 0 && Math.random() > 0.6) {
+                        const pKey = malProps[Math.floor(Math.random() * malProps.length)];
+                        const prop = room.props[pKey];
+                        if(pKey === 'vending') prop.mesh.children[1].material = materials.redLight; 
+                        else if (pKey === 'tv') {
+                            prop.mesh.material = materials.white;
+                            if(prop.glow) prop.glow.visible = true;
+                        } else if (pKey === 'lamp') {
+                            prop.light.intensity = 1; 
+                            prop.shade.material = materials.glowingEyes; 
+                            if(prop.glow) prop.glow.visible = true;
+                        } else if (pKey === 'laptop') {
+                            prop.pivot.rotation.x = -Math.PI / 1.5; // HYPER EXTENDED
+                            prop.screen.material = materials.whiteScreen; 
+                        }
+                        anomaly.propKey = pKey;
+                        appliedProp = true;
+                    }
+                }
+                
+                if (!appliedProp) {
+                    // Light Malfunction
+                    if (room.light.color.getHex() === room.originalLight.color.getHex() && room.light.intensity === room.originalLight.intensity) {
+                        if (subType === 'red') {
+                            room.light.color.setHex(0xff0000);
+                            room.light.intensity = 0.5;
+                        } else if (subType === 'off') {
+                            room.light.intensity = 0;
+                        } else if (subType === 'blue_flicker') {
+                            room.light.color.setHex(0x5555ff);
+                            room.light.intensity = 0.2;
+                        }
+                        success = true;
+                    }
+                } else {
+                    success = true;
+                }
+            }
+            else {
+                // FILTER FIX: ONLY TARGET RELEVANT PROPS
+                let propKeys = Object.keys(room.props).filter(k => {
+                    const pType = room.props[k].type;
+                    if (type === 'extra') return pType === 'extra';
+                    if (type === 'missing' || type === 'displacement') return pType !== 'extra' && pType !== 'malfunction';
+                    return pType === type;
+                });
+
+                let propKey = null;
+
+                if (specificPropKey && propKeys.includes(specificPropKey)) {
+                    propKey = specificPropKey;
+                } else if (!specificPropKey && propKeys.length > 0) {
+                    propKey = propKeys[Math.floor(Math.random() * propKeys.length)];
+                }
+
+                if (propKey) {
+                    const prop = room.props[propKey];
+                    anomaly.propKey = propKey;
+
+                    if (type === 'missing') {
+                        prop.mesh.visible = false;
+                        success = true;
+                    } else if (type === 'extra') {
+                        prop.mesh.visible = true;
+                        success = true;
+                    } else if (type === 'displacement') {
+                        if (propKey === 'fridge') {
+                            prop.pivot.rotation.y = -Math.PI / 2;
+                        } else {
+                            prop.mesh.position.x += (Math.random() - 0.5) * 2.0; 
+                            prop.mesh.rotation.y += Math.random() * 1.5;
+                        }
+                        success = true;
+                    }
+                }
+            }
+
+            if(type === 'camera') {
+                success = true; 
+                if (subType === 'eas') {
+                    // DO NOT TRIGGER AUTOMATICALLY
+                    // Logic moved to gameTick
+                }
+            }
+
+            if (success) {
+                gameState.anomalies.push(anomaly);
+                updateStatus();
+                updateAdminList();
+                console.log(`Anomaly spawned in ${room.id}: ${type} ${subType || anomaly.propKey}`);
+            }
+        }
+
+        function enterRealWorld() {
+            gameState.mode = 'REAL_WORLD';
+            gameState.isHiding = false;
+            const rw = gameState.realWorldRef;
+
+            // Ensure monitor is showing alert initially
+            if(rw.screenMesh) rw.screenMesh.material.map = rw.easTexture;
+            
+            // UI Switch
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('eas-overlay').classList.add('hidden');
+            document.getElementById('hide-ui').classList.remove('hidden');
+            
+            // Set Camera to Real World Desk
+            camera.position.copy(rw.camPos);
+            camera.lookAt(rw.lookAt);
+            camera.fov = 60;
+            camera.updateProjectionMatrix();
+
+            // Start Survival Timer (4 seconds to hide)
+            setTimeout(() => {
+                if (!gameState.isHiding) {
+                    endGame(false, "CAUGHT BY ENTITY");
+                } else {
+                    // Player survived
+                    showFeedback("THREAT PASSED...", "#0f0", 2000);
+                    // Show Exit Button
+                    setTimeout(() => {
+                        document.getElementById('exit-hide-btn').classList.remove('hidden');
+                    }, 2000);
+                }
+            }, 4000);
+        }
+
+        function exitRealWorld() {
+            gameState.mode = 'CAMERAS';
+            gameState.isHiding = false;
+            document.getElementById('game-ui').classList.remove('hidden');
+            document.getElementById('hide-ui').classList.add('hidden');
+            
+            // Reset UI for next time
+            document.getElementById('hide-btn').classList.remove('hidden');
+            document.getElementById('exit-hide-btn').classList.add('hidden');
+            document.getElementById('monitor-btn').classList.add('hidden');
+            document.getElementById('reboot-ui').classList.add('hidden');
+            document.getElementById('reboot-bar').style.width = '0%';
+
+            // Remove the EAS anomaly
+            const idx = gameState.anomalies.findIndex(a => a.subType === 'eas');
+            if (idx > -1) gameState.anomalies.splice(idx, 1);
+            
+            gameState.easTriggered = false; // Reset trigger
+            
+            updateStatus();
+            updateAdminList();
+        }
+
+        document.getElementById('hide-btn').onclick = () => {
+            if (gameState.mode === 'REAL_WORLD') {
+                gameState.isHiding = true;
+                const rw = gameState.realWorldRef;
+                camera.position.copy(rw.hidePos);
+                camera.lookAt(new THREE.Vector3(rw.hidePos.x, rw.hidePos.y, rw.hidePos.z - 5));
+                document.getElementById('hide-btn').classList.add('hidden'); 
+            }
+        };
+
+        document.getElementById('exit-hide-btn').onclick = () => {
+            // Move camera back to desk
+            const rw = gameState.realWorldRef;
+            camera.position.copy(rw.camPos);
+            camera.lookAt(rw.lookAt);
+            
+            gameState.isHiding = false; 
+            
+            // UI update
+            document.getElementById('exit-hide-btn').classList.add('hidden');
+            document.getElementById('monitor-btn').classList.remove('hidden');
+            
+            // Turn monitor screen black to simulate 'off' state needing reboot
+            if(rw.screenMesh) rw.screenMesh.material = materials.black;
+        };
+
+        document.getElementById('monitor-btn').onclick = () => {
+            document.getElementById('monitor-btn').classList.add('hidden');
+            document.getElementById('reboot-ui').classList.remove('hidden');
+            
+            let progress = 0;
+            const bar = document.getElementById('reboot-bar');
+            const interval = setInterval(() => {
+                progress += 1; 
+                bar.style.width = progress + '%';
+                
+                if(progress >= 100) {
+                    clearInterval(interval);
+                    exitRealWorld();
+                }
+            }, 50); // 50ms * 100 = 5s
+        };
+
+        // --- NEW REPORTING LOGIC ---
+
+        function processReport(roomIndex, type) {
+            if (gameState.reportProcessing) return;
+            
+            gameState.reportProcessing = true;
+            document.getElementById('report-btn').disabled = true;
+            document.getElementById('report-btn').innerText = "SENDING REPORT...";
+            
+            showFeedback("REPORT SENT... PROCESSING...", "#FFFF00", 5000); 
+
+            setTimeout(() => {
+                const success = fixAnomaly(roomIndex, type);
+                gameState.reportProcessing = false;
+                document.getElementById('report-btn').disabled = false;
+                document.getElementById('report-btn').innerText = "! REPORT ANOMALY !";
+            }, 5000); 
+        }
+
+        function fixAnomaly(roomIndex, type) {
+            const room = gameState.rooms[roomIndex];
+            const index = gameState.anomalies.findIndex(a => a.roomIndex === roomIndex && a.type === type);
+
+            if (index > -1) {
+                const anomaly = gameState.anomalies[index];
+                
+                if (type === 'intruder') {
+                    if (anomaly.isWindow) {
+                        room.windowIntruder.visible = false;
+                    } else {
+                        room.intruder.visible = false;
+                        setIntruderVariant(room.intruder, 'standard', room.id === 'CORRIDOR');
+                        room.intruder.rotation.set(0, 0, 0); 
+                    }
+                } else if (type === 'malfunction') {
+                    if (anomaly.propKey) {
+                        const prop = room.props[anomaly.propKey];
+                        if (anomaly.propKey === 'vending') prop.mesh.children[1].material = materials.glass;
+                        else if (anomaly.propKey === 'tv') {
+                            prop.mesh.material = materials.black;
+                            if(prop.glow) prop.glow.visible = false;
+                        } 
+                        else if (anomaly.propKey === 'lamp') {
+                            prop.light.intensity = 0;
+                            prop.shade.material = materials.fabric;
+                            if(prop.glow) prop.glow.visible = false;
+                        } else if (anomaly.propKey === 'laptop') {
+                            prop.pivot.rotation.x = 0; // Close lid
+                            prop.screen.material = materials.black;
+                        }
+                    } else {
+                        room.light.color.copy(room.originalLight.color);
+                        room.light.intensity = room.originalLight.intensity;
+                    }
+                } else if (type === 'missing' || type === 'displacement' || type === 'extra') {
+                    const prop = room.props[anomaly.propKey];
+                    if (type === 'extra') {
+                        prop.mesh.visible = false;
+                    } else {
+                        prop.mesh.visible = prop.originalState.vis;
+                        if (anomaly.propKey === 'fridge') {
+                            prop.pivot.rotation.copy(prop.originalState.pivotRot);
+                        } else {
+                            prop.mesh.position.copy(prop.originalState.pos);
+                            prop.mesh.rotation.copy(prop.originalState.rot);
+                        }
+                    }
+                }
+
+                gameState.anomalies.splice(index, 1);
+                showFeedback("ANOMALY REMOVED", "#0f0", 2000);
+                updateStatus();
+                updateAdminList();
+                return true;
+            } else {
+                showFeedback("NO ANOMALY FOUND", "#f00", 2000);
+                return false;
+            }
+        }
+
+        function updateStatus() {
+            const count = gameState.anomalies.length;
+            const el = document.getElementById('anomaly-count');
+            
+            let statusText = "SAFE";
+            let statusColor = "#33ff33"; // Green
+
+            if (count === 0) {
+                statusText = "SAFE";
+                statusColor = "#33ff33";
+            } else if (count < 3) { // 1, 2
+                statusText = "STABLE";
+                statusColor = "#ffff33"; // Yellow
+            } else if (count < 5) { // 3, 4
+                statusText = "SEMI-STABLE";
+                statusColor = "#ffaa00"; // Orange
+            } else { // 5+
+                statusText = "UNSTABLE";
+                statusColor = "#ff3333"; // Red
+            }
+
+            el.innerText = statusText;
+            el.style.color = statusColor;
+            el.style.textShadow = `0 0 10px ${statusColor}`;
+
+            if (count > gameState.maxAnomalies) {
+                endGame(false);
+            }
+        }
+
+        // ADMIN FUNCTIONS
+        function updateAdminList() {
+            const list = document.getElementById('admin-active-list');
+            list.innerHTML = '';
+            
+            gameState.anomalies.forEach(a => {
+                const room = gameState.rooms[a.roomIndex];
+                // Show Subtype or Prop Key for clarity
+                let desc = a.subType || a.propKey || 'Standard';
+                const div = document.createElement('div');
+                div.className = 'admin-item';
+                div.innerHTML = `
+                    <span>${room.id} - ${a.type.toUpperCase()} [${desc}]</span>
+                    <span class="admin-remove" onclick="removeAnomalyAdmin(${a.roomIndex}, '${a.type}')">[X]</span>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        window.removeAnomalyAdmin = function(roomIndex, type) {
+            fixAnomaly(roomIndex, type);
+        }
+
+        function getAvailableProps(roomIndex, type) {
+            const room = gameState.rooms[roomIndex];
+            if (!room) return [];
+            return Object.keys(room.props).filter(k => {
+                const pType = room.props[k].type;
+                if (type === 'extra') return pType === 'extra';
+                if (type === 'missing' || type === 'displacement') return pType !== 'extra' && pType !== 'malfunction';
+                return false;
+            });
+        }
+
+        function initAdmin() {
+            const roomSelect = document.getElementById('admin-room-select');
+            gameState.rooms.forEach((r, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.innerText = r.id;
+                roomSelect.appendChild(opt);
+            });
+
+            const typeSelect = document.getElementById('admin-type-select');
+            const subtypeSelect = document.getElementById('admin-subtype-select');
+
+            const subtypes = {
+                'intruder': ['standard', 'crawler', 'tall', 'face'],
+                'malfunction': ['red', 'off', 'blue_flicker', 'vending', 'tv', 'lamp', 'laptop'],
+                'camera': ['shake', 'zoom', 'tilt', 'offline', 'eas']
+            };
+
+            function updateSubtypes() {
+                const rIdx = parseInt(roomSelect.value);
+                const type = typeSelect.value;
+                subtypeSelect.innerHTML = '<option value="">Any/Random</option>';
+                
+                let opts = [];
+                if (['intruder', 'malfunction', 'camera'].includes(type)) {
+                    opts = subtypes[type];
+                } else {
+                    // For object anomalies, get specific props in this room
+                    opts = getAvailableProps(rIdx, type);
+                }
+
+                if(opts) {
+                    opts.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s;
+                        opt.innerText = s;
+                        subtypeSelect.appendChild(opt);
+                    });
+                }
+            }
+
+            roomSelect.onchange = updateSubtypes;
+            typeSelect.onchange = updateSubtypes;
+            
+            // Init
+            updateSubtypes();
+
+            document.getElementById('admin-spawn-btn').onclick = () => {
+                const rIdx = parseInt(document.getElementById('admin-room-select').value);
+                const type = typeSelect.value;
+                const subType = subtypeSelect.value;
+                triggerAnomaly(rIdx, type, subType);
+            };
+
+            document.getElementById('admin-clear-btn').onclick = () => {
+                // Clear all anomalies
+                while(gameState.anomalies.length > 0) {
+                    const a = gameState.anomalies[0];
+                    fixAnomaly(a.roomIndex, a.type);
+                }
+                updateAdminList();
+            }
+        }
+
+        function switchCamera(index) {
+            if (gameState.mode === 'REAL_WORLD') return;
+            gameState.activeCamera = index;
+            const room = gameState.rooms[index];
+            
+            const overlay = document.getElementById('crt-overlay');
+            overlay.style.backgroundColor = 'rgba(255,255,255,0.2)';
+            setTimeout(() => overlay.style.backgroundColor = 'transparent', 100);
+
+            document.querySelectorAll('.camera-btn').forEach((b, i) => {
+                b.classList.toggle('active', i === index);
+            });
+        }
+
+        function formatTime(minutes) {
+            const h = Math.floor(minutes / 60);
+            const m = Math.floor(minutes % 60);
+            return `${h === 0 ? 12 : h}:${m < 10 ? '0'+m : m} AM`;
+        }
+
+        function gameTick() {
+            if (!gameState.active || gameState.mode === 'REAL_WORLD') return;
+
+            gameState.gameTime += 0.05; 
+            document.getElementById('time-display').innerText = formatTime(gameState.gameTime);
+
+            if (gameState.gameTime >= 360) {
+                endGame(true);
+            }
+
+            gameState.difficultyTimer++;
+            
+            if (Math.random() < 0.0025 + (gameState.gameTime / 100000)) { 
+                triggerAnomaly();
+            }
+
+            // EAS TRIGGER CHECK
+            const easAnomaly = gameState.anomalies.find(a => a.roomIndex === gameState.activeCamera && a.subType === 'eas');
+            if (easAnomaly && !gameState.easTriggered) {
+                gameState.easTriggered = true;
+                setTimeout(() => enterRealWorld(), 1000); // 1 Second delay after spotting it
+            }
+        }
+        
+        function updateCameraEffects() {
+            if (gameState.mode === 'REAL_WORLD') return;
+
+            const offline = document.getElementById('offline-overlay');
+            const eas = document.getElementById('eas-overlay');
+            
+            // Default hidden
+            offline.classList.add('hidden');
+            eas.classList.add('hidden');
+
+            const camAnomaly = gameState.anomalies.find(a => a.roomIndex === gameState.activeCamera && a.type === 'camera');
+            
+            if (camAnomaly) {
+                if (camAnomaly.subType === 'offline') {
+                    offline.classList.remove('hidden');
+                } else if (camAnomaly.subType === 'eas') {
+                    eas.classList.remove('hidden');
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState.mode === 'REAL_WORLD') {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            updateCameraEffects();
+
+            const currentRoom = gameState.rooms[gameState.activeCamera];
+            const camAnomaly = gameState.anomalies.find(a => a.roomIndex === gameState.activeCamera && a.type === 'camera');
+            
+            let targetX = currentRoom.camPos.x;
+            let targetY = currentRoom.camPos.y;
+            let baseFOV = 75;
+
+            // Apply Mouse Parallax with Limits
+            const panX = Math.max(-1, Math.min(1, mouse.x * 0.5));
+            const panY = Math.max(-0.5, Math.min(0.5, mouse.y * 0.3));
+            targetX += panX;
+            targetY += panY;
+
+            if (camAnomaly) {
+                if (camAnomaly.subType === 'shake') {
+                    targetX += (Math.random() - 0.5) * 0.1;
+                    targetY += (Math.random() - 0.5) * 0.1;
+                    if (Math.random() > 0.95) renderer.domElement.style.opacity = 0;
+                    else renderer.domElement.style.opacity = 1;
+                } else if (camAnomaly.subType === 'zoom') {
+                    camera.fov = baseFOV + Math.sin(Date.now() * 0.005) * 15;
+                    camera.updateProjectionMatrix();
+                } else if (camAnomaly.subType === 'tilt') {
+                    camera.rotation.z = Math.PI / 8;
+                }
+            } else {
+                renderer.domElement.style.opacity = 1;
+                camera.fov = baseFOV;
+                camera.updateProjectionMatrix();
+                camera.rotation.z = 0;
+                
+                // Calculate LookAt with parallax
+                const lookAtX = currentRoom.lookAt.x + (mouse.x * 2);
+                const lookAtY = currentRoom.lookAt.y + (mouse.y * 1);
+                camera.lookAt(lookAtX, lookAtY, currentRoom.lookAt.z);
+            }
+
+            if (camAnomaly && camAnomaly.subType === 'shake') {
+                camera.position.set(targetX, targetY, currentRoom.camPos.z);
+            } else {
+                camera.position.set(targetX, targetY, currentRoom.camPos.z);
+            }
+            
+            // Intruders look at camera
+            if (currentRoom.intruder && currentRoom.intruder.visible) {
+                currentRoom.intruder.lookAt(camera.position);
+                if (currentRoom.intruder.position.y > 0) { 
+                     // Allow full rotation
+                } else {
+                     currentRoom.intruder.rotation.x = 0;
+                     currentRoom.intruder.rotation.z = 0;
+                }
+            }
+
+            flashlight.position.copy(camera.position);
+
+            renderer.render(scene, camera);
+        }
+
+        function setupUI() {
+            const controls = document.getElementById('camera-controls');
+            gameState.rooms.forEach((room, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'camera-btn'; 
+                btn.innerText = `CAM 0${idx+1}: ${room.id}`;
+                btn.onclick = () => switchCamera(idx);
+                controls.appendChild(btn);
+            });
+
+            const reportBtn = document.getElementById('report-btn');
+            const modal = document.getElementById('report-modal');
+            const closeBtn = document.getElementById('close-report');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+
+            reportBtn.onclick = () => {
+                if (gameState.reportProcessing) return;
+                modal.style.display = 'block';
+                showRoomSelection();
+            };
+
+            closeBtn.onclick = () => {
+                modal.style.display = 'none';
+            };
+
+            function showRoomSelection() {
+                modalTitle.innerText = "SELECT ROOM";
+                modalContent.innerHTML = "";
+                
+                gameState.rooms.forEach((room, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'report-option';
+                    btn.innerText = room.id;
+                    btn.onclick = () => showTypeSelection(index);
+                    modalContent.appendChild(btn);
+                });
+            }
+
+            function showTypeSelection(roomIndex) {
+                modalTitle.innerText = "SELECT ANOMALY";
+                modalContent.innerHTML = "";
+
+                const types = [
+                    { id: 'intruder', name: 'Intruder Presence' },
+                    { id: 'displacement', name: 'Object Displacement' },
+                    { id: 'missing', name: 'Object Missing' },
+                    { id: 'extra', name: 'Extra Object' },
+                    { id: 'malfunction', name: 'Electrical Malfunction' },
+                    { id: 'camera', name: 'Camera Glitch' }
+                ];
+
+                types.forEach(type => {
+                    const btn = document.createElement('button');
+                    btn.className = 'report-option';
+                    btn.innerText = type.name;
+                    btn.onclick = () => {
+                        modal.style.display = 'none';
+                        processReport(roomIndex, type.id);
+                    };
+                    modalContent.appendChild(btn);
+                });
+
+                const backBtn = document.createElement('button');
+                backBtn.className = 'report-option report-back';
+                backBtn.innerText = "< BACK";
+                backBtn.onclick = () => showRoomSelection();
+                modalContent.appendChild(backBtn);
+            }
+            
+            document.getElementById('start-btn').onclick = startGame;
+            
+            initAdmin();
+        }
+
+        function showFeedback(text, color, duration = 1500) {
+            const f = document.getElementById('feedback');
+            f.innerText = text;
+            f.style.color = color;
+            f.style.borderColor = color;
+            f.style.opacity = 1;
+            f.classList.remove('hidden');
+            
+            if (f.timeout) clearTimeout(f.timeout);
+            
+            f.timeout = setTimeout(() => { 
+                f.style.opacity = 0; 
+            }, duration);
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            gameState.active = true;
+            switchCamera(0);
+            setInterval(gameTick, 100); 
+            animate();
+        }
+
+        function endGame(victory, reasonText) {
+            gameState.active = false;
+            const screen = document.getElementById('game-over');
+            const reason = document.getElementById('game-over-reason');
+            screen.style.display = 'flex';
+            document.getElementById('hide-ui').classList.add('hidden');
+            
+            if (victory) {
+                screen.querySelector('h1').innerText = "SHIFT COMPLETE";
+                screen.querySelector('h1').style.color = "#0f0";
+                reason.innerText = "Surived until 6:00 AM";
+            } else {
+                screen.querySelector('h1').innerText = "SIGNAL LOST";
+                screen.querySelector('h1').style.color = "red";
+                reason.innerText = reasonText || "TOO MANY ANOMALIES. FACILITY COMPROMISED.";
+            }
+        }
+
+        setupUI();
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
